@@ -1,0 +1,12 @@
+{
+  "id": "{F9F03E22-B998-4B45-A5AF-35E8493D2C74}",
+  "name": "Faikout Local",
+  "author": "ChrischanByteBard",
+  "url": "https://github.com/ChrischanByteBard/symcon-faikout-local",
+  "compatibility": {
+    "version": "9.0"
+  },
+  "version": "0.1.0",
+  "build": 20261018,
+  "date": 0
+}
