@@ -1,0 +1,27 @@
+name: PHP checks
+on:
+  push:
+    branches: [develop/faikout-v0.1.0]
+  pull_request:
+    branches: [main]
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          tools: none
+          coverage: none
+      - name: PHP lint
+        run: |
+          php -l FaikoutLocal/module.php
+          php -l tests/test_module.php
+      - name: MQTT simulation tests
+        run: php tests/test_module.php
+      - name: Check JSON module manifests
+        run: |
+          python3 -m json.tool library.json >/dev/null
+          python3 -m json.tool FaikoutLocal/module.json >/dev/null
