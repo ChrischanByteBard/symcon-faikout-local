@@ -12,8 +12,8 @@ class FaikoutLocal extends IPSModule
 
     private const FIELDS = [
         'power' => ['Power', 'Eingeschaltet', 0, '~Switch', true],
-        'mode' => ['Mode', 'Betriebsart (Rohwert)', 3, '', true],
-        'temp' => ['Temperature', 'Solltemperatur', 2, '~Temperature', true],
+        'mode' => ['Mode', 'Betriebsart', 3, 'FAIKOUT.Mode', true],
+        'temp' => ['Temperature', 'Solltemperatur', 2, 'FAIKOUT.TargetTemperature', true],
         'home' => ['HomeTemperature', 'Raumtemperatur Daikin', 2, '~Temperature', false],
         'inlet' => ['InletTemperature', 'Ansaugtemperatur', 2, '~Temperature', false],
         'outside' => ['OutdoorTemperature', 'Außentemperatur', 2, '~Temperature', false],
@@ -22,7 +22,7 @@ class FaikoutLocal extends IPSModule
         'heat' => ['HeatingActive', 'Heizbetrieb aktiv', 0, '~Switch', false],
         'online' => ['AirconOnline', 'Innengerät antwortet', 0, '~Switch', false],
         'control' => ['ExternalControl', 'Externe Regelung aktiv', 0, '~Switch', false],
-        'fan' => ['Fan', 'Lüfterstufe (Rohwert)', 3, '', true],
+        'fan' => ['Fan', 'Lüfterstufe', 3, 'FAIKOUT.Fan', true],
         'fanrpm' => ['FanRPM', 'Lüfterdrehzahl (U/min)', 1, '', false],
         'fanfreq' => ['FanFrequency', 'Lüfterfrequenz (Rohwert)', 2, '', false],
         'comp' => ['CompressorRaw', 'Kompressor (Rohwert)', 2, '', false],
@@ -96,9 +96,49 @@ class FaikoutLocal extends IPSModule
         $this->SendDebug($event, $message, 0);
     }
 
+    /**
+     * Create global module-owned profiles only once. The MQTT status still uses
+     * original Faikout strings, preserving existing Symcon variable IDs.
+     */
+    private function EnsureControlProfiles(): void
+    {
+        $modes = [
+            'A' => 'Automatik',
+            'H' => 'Heizen',
+            'C' => 'Kühlen',
+            'D' => 'Entfeuchten',
+            'F' => 'Lüften'
+        ];
+        $fans = [
+            'A' => 'Automatik',
+            'Q' => 'Leise / Nacht',
+            '1' => 'Stufe 1',
+            '2' => 'Stufe 2',
+            '3' => 'Stufe 3',
+            '4' => 'Stufe 4',
+            '5' => 'Stufe 5'
+        ];
+        foreach (['FAIKOUT.Mode' => $modes, 'FAIKOUT.Fan' => $fans] as $name => $options) {
+            if (IPS_VariableProfileExists($name)) {
+                continue;
+            }
+            IPS_CreateVariableProfile($name, VARIABLETYPE_STRING);
+            foreach ($options as $value => $caption) {
+                IPS_SetVariableProfileAssociation($name, (string)$value, $caption, '', -1);
+            }
+        }
+        if (!IPS_VariableProfileExists('FAIKOUT.TargetTemperature')) {
+            IPS_CreateVariableProfile('FAIKOUT.TargetTemperature', VARIABLETYPE_FLOAT);
+            IPS_SetVariableProfileText('FAIKOUT.TargetTemperature', '', ' °C');
+            IPS_SetVariableProfileDigits('FAIKOUT.TargetTemperature', 1);
+            IPS_SetVariableProfileValues('FAIKOUT.TargetTemperature', 10, 32, 0.5);
+        }
+    }
+
     public function ApplyChanges()
     {
         parent::ApplyChanges();
+        $this->EnsureControlProfiles();
         $hostname = $this->ReadPropertyString('Hostname');
         // Update message subscription whenever the sensor selection changes.
         $previousSensorId = $this->ReadAttributeInteger('SubscribedSensorVariableID');
