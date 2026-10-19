@@ -16,7 +16,7 @@ class FaikoutLocal extends IPSModule
         'temp' => ['Temperature', 'Solltemperatur', 2, '', true],
         'home' => ['HomeTemperature', 'Raumtemperatur Daikin', 2, '~Temperature', false],
         'inlet' => ['InletTemperature', 'Ansaugtemperatur', 2, '~Temperature', false],
-        'outside' => ['OutdoorTemperature', 'Außentemperatur', 2, '~Temperature', false],
+        'outside' => ['OutdoorTemperature', 'Außengerät · Außentemperatur', 2, '~Temperature', false],
         'liquid' => ['LiquidTemperature', 'Kältemitteltemperatur', 2, '~Temperature', false],
         'env' => ['ExternalTemperature', 'Externe Referenztemperatur', 2, '~Temperature', false],
         'heat' => ['HeatingActive', 'Heizbetrieb aktiv', 0, '~Switch', false],
@@ -25,8 +25,8 @@ class FaikoutLocal extends IPSModule
         'fan' => ['Fan', 'Lüfterstufe', 3, '', true],
         'fanrpm' => ['FanRPM', 'Lüfterdrehzahl (U/min)', 1, '', false],
         'fanfreq' => ['FanFrequency', 'Lüfterfrequenz (Rohwert)', 2, '', false],
-        'comp' => ['CompressorRaw', 'Kompressor (Rohwert)', 2, '', false],
-        'Wh' => ['EnergyWh', 'Energiezähler Wh (Rohwert)', 2, '', false],
+        'comp' => ['CompressorRaw', 'Außengerät · Verdichter (Rohwert)', 2, '', false],
+        'Wh' => ['EnergyWh', 'System · Energiezähler Wh (Rohwert)', 2, '', false],
         'swingv' => ['SwingVertical', 'Vertikaler Schwenkbetrieb (auf/ab)', 0, '', true],
         'swingh' => ['SwingHorizontal', 'Horizontaler Schwenkbetrieb (links/rechts)', 0, '', true],
         'comfort' => ['Comfort', 'Komfort-Luftstrom (geräteabhängig)', 0, '', true],
@@ -50,6 +50,60 @@ class FaikoutLocal extends IPSModule
         'autotopic' => ['AutoTopic', 'MQTT Temperaturtopic', 3, '', false],
         'autopayload' => ['AutoPayload', 'JSON Temperaturfeld', 3, '', false],
     ];
+
+    // Fixed position bands keep related values together, preserving variable IDs.
+    private const POSITIONS = [
+        'Connected' => 0, 'AirconOnline' => 1, 'LastStatus' => 2,
+        'ExternalReferenceEnabled' => 3, 'ExternalReferenceReady' => 4,
+        // Innengerät: Bedienung
+        'Power' => 10, 'Mode' => 11, 'Temperature' => 12, 'Fan' => 13,
+        // Innengerät: Luftstrom
+        'SwingVertical' => 20, 'SwingHorizontal' => 21, 'Comfort' => 22,
+        'IntelligentEye' => 23, 'Powerful' => 24, 'Econo' => 25, 'Streamer' => 26,
+        // Innengerät: Messwerte
+        'HomeTemperature' => 40, 'InletTemperature' => 41,
+        'ExternalTemperature' => 42, 'LiquidTemperature' => 43,
+        'FanRPM' => 44, 'FanFrequency' => 45,
+        'HeatingActive' => 46, 'ExternalControl' => 47,
+        // Außengerät / gesamtes Multi-Split-System (via S21-Innengerät)
+        'OutdoorTemperature' => 60, 'CompressorRaw' => 61, 'EnergyWh' => 62,
+        // Interne Faikout-Automatik und Konfiguration
+        'AutoPower' => 70, 'AutoTarget' => 71, 'AutoMargin' => 72,
+        'ReportingSeconds' => 80, 'LiveStatus' => 81,
+        'HomeAssistantDiscovery' => 82, 'TempAdjust' => 83,
+        'SettingAutoPower' => 84, 'AutoPowerOffset' => 85,
+        'ControlTimeout' => 86, 'AutoTopic' => 87, 'AutoPayload' => 88,
+        'FirmwareVersion' => 90, 'RawStatus' => 95, 'LastError' => 96,
+    ];
+
+    private const OUTDOOR_CAPTIONS = [
+        'OutdoorTemperature' => ['Außentemperatur', 'Außengerät · Außentemperatur'],
+        'CompressorRaw' => ['Kompressor (Rohwert)', 'Außengerät · Verdichter (Rohwert)'],
+        'EnergyWh' => ['Energiezähler Wh (Rohwert)', 'System · Energiezähler Wh (Rohwert)'],
+    ];
+
+    /** Order all existing child variables immediately after a module update. */
+    private function SortExistingVariables(): void
+    {
+        foreach (IPS_GetChildrenIDs($this->InstanceID) as $objectId) {
+            $object = IPS_GetObject($objectId);
+            $ident = (string) ($object['ObjectIdent'] ?? '');
+            if (!array_key_exists($ident, self::POSITIONS)) {
+                continue;
+            }
+            $position = self::POSITIONS[$ident];
+            if ((int) ($object['ObjectPosition'] ?? -1) !== $position) {
+                IPS_SetPosition($objectId, $position);
+            }
+            if (isset(self::OUTDOOR_CAPTIONS[$ident])) {
+                [$oldCaption, $newCaption] = self::OUTDOOR_CAPTIONS[$ident];
+                // Rename only the untouched legacy caption. Preserve custom user names.
+                if (IPS_GetName($objectId) === $oldCaption) {
+                    IPS_SetName($objectId, $newCaption);
+                }
+            }
+        }
+    }
 
     public function Create()
     {
@@ -78,13 +132,13 @@ class FaikoutLocal extends IPSModule
                     ['Value' => false, 'Caption' => 'Offline', 'IconActive' => false, 'IconValue' => '', 'ColorActive' => false, 'ColorValue' => -1],
                     ['Value' => true, 'Caption' => 'Online', 'IconActive' => false, 'IconValue' => '', 'ColorActive' => false, 'ColorValue' => -1],
                 ])],
-            0
+            self::POSITIONS['Connected']
         );
         $this->RegisterVariableBoolean(
             'ExternalReferenceEnabled',
             'Externe Temperaturregelung freigegeben (Symcon)',
             $this->PresentationFor('ExternalReferenceEnabled', ''),
-            2
+            self::POSITIONS['ExternalReferenceEnabled']
         );
         $this->EnableAction('ExternalReferenceEnabled');
         $this->RegisterVariableBoolean(
@@ -95,14 +149,14 @@ class FaikoutLocal extends IPSModule
                     ['Value' => false, 'Caption' => 'Ausstehend', 'IconActive' => false, 'IconValue' => '', 'ColorActive' => false, 'ColorValue' => -1],
                     ['Value' => true, 'Caption' => 'Bestätigt', 'IconActive' => false, 'IconValue' => '', 'ColorActive' => false, 'ColorValue' => -1],
                 ])],
-            3
+            self::POSITIONS['ExternalReferenceReady']
         );
         $this->RegisterVariableInteger(
             'LastStatus', 'Letzter Status',
-            $this->PresentationFor('LastStatus', ''), 1
+            $this->PresentationFor('LastStatus', ''), self::POSITIONS['LastStatus']
         );
-        $this->RegisterVariableString('RawStatus', 'Letzter Status JSON', '', 95);
-        $this->RegisterVariableString('LastError', 'Letzter Fehler', '', 96);
+        $this->RegisterVariableString('RawStatus', 'Letzter Status JSON', '', self::POSITIONS['RawStatus']);
+        $this->RegisterVariableString('LastError', 'Letzter Fehler', '', self::POSITIONS['LastError']);
     }
 
     private function ValidHostname(string $hostname): bool
@@ -244,8 +298,9 @@ class FaikoutLocal extends IPSModule
         // Also update existing installations; Create() may not run on module updates.
         $this->MaintainVariable(
             'LastStatus', 'Letzter Status', VARIABLETYPE_INTEGER,
-            $this->PresentationFor('LastStatus', ''), 1, true
+            $this->PresentationFor('LastStatus', ''), self::POSITIONS['LastStatus'], true
         );
+        $this->SortExistingVariables();
         $hostname = $this->ReadPropertyString('Hostname');
         // Update message subscription whenever the sensor selection changes.
         $previousSensorId = $this->ReadAttributeInteger('SubscribedSensorVariableID');
@@ -397,7 +452,7 @@ class FaikoutLocal extends IPSModule
             $this->SetValue('LastError', $raw);
             $this->Trace('Faikout Error', $raw);
         } elseif ($class === 'info' && is_array($data) && is_scalar($data['version'] ?? null)) {
-            $this->MaintainVariable('FirmwareVersion', 'Faikout Firmware', VARIABLETYPE_STRING, '', 70, true);
+            $this->MaintainVariable('FirmwareVersion', 'Faikout Firmware', VARIABLETYPE_STRING, '', self::POSITIONS['FirmwareVersion'], true);
             $this->SetValue('FirmwareVersion', (string) $data['version']);
         }
     }
@@ -425,7 +480,7 @@ class FaikoutLocal extends IPSModule
             if ($type === VARIABLETYPE_STRING && !is_scalar($value)) {
                 continue;
             }
-            $this->MaintainVariable($ident, $caption, $type, $this->PresentationFor($ident, $profile), 20, true);
+            $this->MaintainVariable($ident, $caption, $type, $this->PresentationFor($ident, $profile), self::POSITIONS[$ident] ?? 89, true);
             if ($write) {
                 $this->EnableAction($ident);
             }
