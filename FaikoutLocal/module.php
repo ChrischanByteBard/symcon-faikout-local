@@ -57,6 +57,7 @@ class FaikoutLocal extends IPSModule
         $this->RegisterPropertyInteger('SensorVariableID', 0);
         $this->RegisterPropertyInteger('PublishIntervalSeconds', 120);
         $this->RegisterPropertyInteger('SensorMaxAgeSeconds', 1800);
+        $this->RegisterPropertyBoolean('DebugLogging', false);
         $this->RegisterTimer('ExternalTemperatureTimer', 0, 'FAIKOUT_SendSensorValue($_IPS[\'TARGET\']);');
         $this->RegisterVariableBoolean('Connected', 'Faikout MQTT verbunden', '~Switch', 0);
         $this->RegisterVariableInteger('LastStatus', 'Letzter Status', '~UnixTimestamp', 1);
@@ -67,6 +68,20 @@ class FaikoutLocal extends IPSModule
     private function ValidHostname(string $hostname): bool
     {
         return preg_match('/^[A-Za-z0-9_-]+$/D', $hostname) === 1;
+    }
+
+    /** Debug messages are emitted only when explicitly enabled in the instance. */
+    private function Trace(string $event, string $message): void
+    {
+        if (!$this->ReadPropertyBoolean('DebugLogging')) {
+            return;
+        }
+        // Limit verbose MQTT payloads so an open Debug window stays responsive.
+        $maxBytes = 2048;
+        if (strlen($message) > $maxBytes) {
+            $message = substr($message, 0, $maxBytes) . ' ... [truncated]';
+        }
+        $this->SendDebug($event, $message, 0);
     }
 
     public function ApplyChanges()
@@ -94,6 +109,7 @@ class FaikoutLocal extends IPSModule
                 ['type' => 'SelectVariable', 'name' => 'SensorVariableID', 'caption' => 'Homematic Isttemperatur'],
                 ['type' => 'NumberSpinner', 'name' => 'PublishIntervalSeconds', 'caption' => 'Temperaturintervall Sekunden (min. 30)'],
                 ['type' => 'NumberSpinner', 'name' => 'SensorMaxAgeSeconds', 'caption' => 'Maximales Messwertalter Sekunden'],
+                ['type' => 'CheckBox', 'name' => 'DebugLogging', 'caption' => 'MQTT-Diagnoseausgaben im Debug-Fenster aktivieren'],
             ],
             'actions' => [
                 ['type' => 'Button', 'caption' => 'Status abfragen', 'onClick' => 'FAIKOUT_RequestStatus($id);'],
@@ -121,8 +137,11 @@ class FaikoutLocal extends IPSModule
             return;
         }
         $class = $parts[0];
+        $this->Trace('MQTT RX Topic', $packet['Topic']);
+        $this->Trace('MQTT RX Payload', $raw);
         if ($class === 'state' && count($parts) === 2 && trim($raw) === 'false') {
             $this->SetValue('Connected', false);
+            $this->Trace('Connection', 'Faikout MQTT Will: offline');
             return;
         }
         $data = json_decode($raw, true);
@@ -139,6 +158,7 @@ class FaikoutLocal extends IPSModule
             }
         } elseif ($class === 'error') {
             $this->SetValue('LastError', $raw);
+            $this->Trace('Faikout Error', $raw);
         } elseif ($class === 'info' && is_array($data) && is_scalar($data['version'] ?? null)) {
             $this->MaintainVariable('FirmwareVersion', 'Faikout Firmware', VARIABLETYPE_STRING, '', 70, true);
             $this->SetValue('FirmwareVersion', (string) $data['version']);
@@ -186,7 +206,18 @@ class FaikoutLocal extends IPSModule
             'Topic' => $topic,
             'Payload' => $payload,
         ]);
-        return $json !== false && $this->SendDataToParent($json) !== false;
+        if ($json === false) {
+            $this->Trace('MQTT TX Error', 'Could not encode MQTT packet for ' . $topic);
+            return false;
+        }
+        $this->Trace('MQTT TX Topic', $topic);
+        $this->Trace('MQTT TX Payload', $payload);
+        $result = $this->SendDataToParent($json);
+        if ($result === false) {
+            $this->Trace('MQTT TX Error', 'SendDataToParent failed for ' . $topic);
+            return false;
+        }
+        return true;
     }
 
     private function SendControl(array $command): bool
@@ -241,16 +272,22 @@ class FaikoutLocal extends IPSModule
     {
         $id = $this->ReadPropertyInteger('SensorVariableID');
         if ($id <= 0 || !IPS_VariableExists($id)) {
+            $this->Trace('Temperature skip', 'No valid temperature variable configured');
             return false;
         }
         $meta = IPS_GetVariable($id);
         $updated = (int) ($meta['VariableUpdated'] ?? 0);
         $maxAge = max(60, $this->ReadPropertyInteger('SensorMaxAgeSeconds'));
         if ($updated <= 0 || $updated > time() || time() - $updated > $maxAge) {
+            $this->Trace('Temperature skip', 'Sensor value is stale or timestamp invalid');
             return false;
         }
         $value = GetValue($id);
-        return is_numeric($value) && $this->SetExternalTemperature((float) $value);
+        if (!is_numeric($value) || !is_finite((float) $value) || (float) $value < 5 || (float) $value > 40) {
+            $this->Trace('Temperature skip', 'Sensor value is invalid or outside 5-40 C');
+            return false;
+        }
+        return $this->SetExternalTemperature((float) $value);
     }
 
     public function RequestStatus(): bool
