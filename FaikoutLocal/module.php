@@ -131,6 +131,8 @@ class FaikoutLocal extends IPSModule
                 ['type' => 'Label', 'caption' => 'Eine Freigabe sendet autop=false, autoptemp=0, tempadjust=true an Faikout und aktiviert die Temperaturübertragung.'],
                 ['type' => 'Label', 'caption' => 'Eine Sperre stoppt die Temperaturübertragung und sendet tempadjust=false (sowie autop=false, autoptemp=0).'],
                 ['type' => 'Label', 'caption' => 'Die Freigabevariable beschreibt den Symcon-Zustand, nicht die bestätigte Faikout-Einstellung. Bitte bei Bedarf Einstellungen abfragen.'],
+                ['type' => 'Button', 'caption' => 'Externe Temperaturregelung aktivieren', 'onClick' => 'FAIKOUT_SetExternalReferenceEnabled($id, true);'],
+                ['type' => 'Button', 'caption' => 'Externe Temperaturregelung deaktivieren', 'onClick' => 'FAIKOUT_SetExternalReferenceEnabled($id, false);'],
                 ['type' => 'Button', 'caption' => 'Status abfragen', 'onClick' => 'FAIKOUT_RequestStatus($id);'],
                 ['type' => 'Button', 'caption' => 'Einstellungen abfragen', 'onClick' => 'FAIKOUT_RequestSettings($id);'],
                 ['type' => 'Button', 'caption' => 'Raumtemperatur jetzt senden', 'onClick' => 'FAIKOUT_SendSensorValue($id);'],
