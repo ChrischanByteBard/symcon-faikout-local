@@ -23,9 +23,11 @@ Eigenständige MQTT-Integration für die lokale Steuerung kompatibler Daikin-Fai
 
 ## Verhalten bei Aktivierung
 - Aktivieren veröffentlicht auf `setting/<hostname>`: `{"autop":false,"autoptemp":0,"tempadjust":true}`.
-- Eine gültige externe Temperatur wird anschließend sofort und zyklisch als `{"env":21.3}` auf `command/<hostname>/control` veröffentlicht.
+- **Sicherheitsfreigabe:** Das Modul fragt die Faikout-Einstellungen zurück. Erst wenn die Antwort `autop=false`, `autoptemp=0` und `tempadjust=true` bestätigt, wird `Faikout-Einstellungen bestätigt` gesetzt und eine externe Temperatur sofort bzw. danach zyklisch als `{"env":21.3}` an `command/<hostname>/control` gesendet.
+- Ist Faikout offline, bleibt die gewünschte Freigabe in Symcon gespeichert, aber **kein** `env` wird gesendet. Bei neuer Statusmeldung wird die Konfiguration erneut angefordert.
+- Wenn die Rückmeldung ausbleibt oder unvollständig ist, bleibt die Übertragung gesperrt.
 - Deaktivieren stoppt die zyklische Übertragung und sendet `{"autop":false,"autoptemp":0,"tempadjust":false}`.
-- Die Symcon-Freigabe bestätigt nur die **lokale MQTT-Veröffentlichung**, **nicht** die Verarbeitung durch das Faikout-Gerät.
+- Die Symcon-Schaltvariable `Externe Temperaturregelung freigegeben (Symcon)` ist der **gewünschte** Zustand. Die separate Variable `Faikout-Einstellungen bestätigt` ist erst nach passender MQTT-Rückmeldung aktiv.
 - Die zurückgemeldete Faikout-Einstellung `TempAdjust` wird getrennt nach Empfang einer `setting/<hostname>`-Nachricht angezeigt.
 - Bei veralteten, nicht numerischen oder unplausiblen Temperaturen wird nichts gesendet.
 - Der Schalter ist bei dieser Version bewusst **standardmäßig aus**, auch nach einem Upgrade von v0.1.1. So wird die automatische Ansteuerung erst nach expliziter Freigabe aktiviert.
