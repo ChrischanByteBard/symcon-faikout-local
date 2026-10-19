@@ -60,10 +60,12 @@ class FaikoutLocal extends IPSModule
         $this->RegisterPropertyBoolean('DebugLogging', false);
         // Safe-by-default: never start remote temperature control until explicitly enabled.
         $this->RegisterAttributeBoolean('ExternalReferenceEnabled', false);
+        $this->RegisterAttributeBoolean('ExternalReferencePending', false);
         $this->RegisterTimer('ExternalTemperatureTimer', 0, 'FAIKOUT_SendSensorValue($_IPS[\'TARGET\']);');
         $this->RegisterVariableBoolean('Connected', 'Faikout MQTT verbunden', '~Switch', 0);
         $this->RegisterVariableBoolean('ExternalReferenceEnabled', 'Externe Temperaturregelung freigegeben (Symcon)', '~Switch', 2);
         $this->EnableAction('ExternalReferenceEnabled');
+        $this->RegisterVariableBoolean('ExternalReferenceReady', 'Faikout-Einstellungen bestätigt', '~Switch', 3);
         $this->RegisterVariableInteger('LastStatus', 'Letzter Status', '~UnixTimestamp', 1);
         $this->RegisterVariableString('RawStatus', 'Letzter Status JSON', '', 95);
         $this->RegisterVariableString('LastError', 'Letzter Fehler', '', 96);
@@ -92,6 +94,10 @@ class FaikoutLocal extends IPSModule
     {
         parent::ApplyChanges();
         $hostname = $this->ReadPropertyString('Hostname');
+        // Device response is required after each module reload.
+        $this->WriteAttributeBoolean('ExternalReferencePending', false);
+        $this->SetValue('ExternalReferenceReady', false);
+        $this->SetTimerInterval('ExternalTemperatureTimer', 0);
         if (!$this->ValidHostname($hostname)) {
             $this->SetReceiveDataFilter('(?!)');
             $this->SetTimerInterval('ExternalTemperatureTimer', 0);
@@ -100,11 +106,7 @@ class FaikoutLocal extends IPSModule
         }
         $this->SetReceiveDataFilter('.*' . preg_quote($hostname, '/') . '.*');
         $this->SetValue('ExternalReferenceEnabled', $this->ReadAttributeBoolean('ExternalReferenceEnabled'));
-        $seconds = max(30, $this->ReadPropertyInteger('PublishIntervalSeconds'));
-        $this->SetTimerInterval(
-            'ExternalTemperatureTimer',
-            ($this->ReadAttributeBoolean('ExternalReferenceEnabled') && $this->ReadPropertyInteger('SensorVariableID') > 0) ? $seconds * 1000 : 0
-        );
+        // Timer is armed only after Faikout confirms remote settings.
     }
 
     public function GetConfigurationForm()
@@ -162,6 +164,7 @@ class FaikoutLocal extends IPSModule
         $this->Trace('MQTT RX Payload', $raw);
         if ($class === 'state' && count($parts) === 2 && trim($raw) === 'false') {
             $this->SetValue('Connected', false);
+            $this->DisarmReference();
             $this->Trace('Connection', 'Faikout MQTT Will: offline');
             return;
         }
@@ -171,9 +174,15 @@ class FaikoutLocal extends IPSModule
             $this->SetValue('LastStatus', time());
             $this->SetValue('RawStatus', $raw);
             $this->UpdateFields($data, self::FIELDS);
+            if ($this->ReadAttributeBoolean('ExternalReferenceEnabled') &&
+                !$this->GetValue('ExternalReferenceReady') &&
+                !$this->ReadAttributeBoolean('ExternalReferencePending')) {
+                $this->ArmReference();
+            }
         } elseif ($class === 'setting') {
             if (is_array($data)) {
                 $this->UpdateFields($data, self::SETTINGS);
+                $this->InspectRemoteSettings($data);
             } elseif (count($parts) === 3) {
                 $this->UpdateFields([$parts[2] => $data ?? $raw], self::SETTINGS);
             }
@@ -292,10 +301,79 @@ class FaikoutLocal extends IPSModule
         }
     }
 
+    private function DisarmReference(): void
+    {
+        $this->SetValue('ExternalReferenceReady', false);
+        $this->WriteAttributeBoolean('ExternalReferencePending', false);
+        $this->SetTimerInterval('ExternalTemperatureTimer', 0);
+    }
+
     /**
-     * Control both local temperature forwarding and Faikout's temperature adjustment.
-     * The local state confirms MQTT publication, not acceptance by the remote device.
-     * The Faikout-reported TempAdjust value remains a separate read-only status.
+     * Configure safe remote behaviour; do not send env until the response confirms it.
+     */
+    private function ArmReference(): bool
+    {
+        $hostname = $this->ReadPropertyString('Hostname');
+        if (!$this->ValidHostname($hostname)) {
+            return false;
+        }
+        $settings = json_encode(['autop' => false, 'autoptemp' => 0, 'tempadjust' => true]);
+        if ($settings === false) {
+            return false;
+        }
+        $this->WriteAttributeBoolean('ExternalReferencePending', true);
+        if (!$this->Publish('setting/' . $hostname, $settings) ||
+            !$this->Publish('setting/' . $hostname, '')) {
+            $this->WriteAttributeBoolean('ExternalReferencePending', false);
+            return false;
+        }
+        $this->Trace('External Reference', 'Awaiting Faikout settings confirmation');
+        return true;
+    }
+
+    private function InspectRemoteSettings(array $settings): void
+    {
+        if (!$this->ReadAttributeBoolean('ExternalReferenceEnabled')) {
+            return;
+        }
+        if (array_key_exists('tempadjust', $settings) && $settings['tempadjust'] === false) {
+            $this->DisarmReference();
+            return;
+        }
+        if (!array_key_exists('autop', $settings) ||
+            !array_key_exists('autoptemp', $settings) ||
+            !array_key_exists('tempadjust', $settings)) {
+            return;
+        }
+        $safe = $settings['autop'] === false &&
+            is_numeric($settings['autoptemp']) &&
+            (float) $settings['autoptemp'] === 0.0 &&
+            $settings['tempadjust'] === true;
+        if (!$safe) {
+            $this->DisarmReference();
+            $this->Trace('External Reference', 'Remote settings unsafe; external reference blocked');
+            return;
+        }
+        if (!$this->ReadAttributeBoolean('ExternalReferencePending') &&
+            !$this->GetValue('ExternalReferenceReady')) {
+            return;
+        }
+        if (!$this->GetValue('Connected')) {
+            return;
+        }
+        $this->WriteAttributeBoolean('ExternalReferencePending', false);
+        $this->SetValue('ExternalReferenceReady', true);
+        $interval = max(30, $this->ReadPropertyInteger('PublishIntervalSeconds'));
+        $this->SetTimerInterval(
+            'ExternalTemperatureTimer',
+            $this->ReadPropertyInteger('SensorVariableID') > 0 ? $interval * 1000 : 0
+        );
+        $this->Trace('External Reference', 'Faikout settings confirmed; external reference enabled');
+        $this->SendSensorValue();
+    }
+
+    /**
+     * Local desired state; the device's actual settings are read back separately.
      */
     public function SetExternalReferenceEnabled(bool $enabled): bool
     {
@@ -304,7 +382,6 @@ class FaikoutLocal extends IPSModule
             $this->Trace('Control Error', 'Faikout hostname is not configured');
             return false;
         }
-
         if ($enabled) {
             $id = $this->ReadPropertyInteger('SensorVariableID');
             if ($id <= 0 || !IPS_VariableExists($id)) {
@@ -312,32 +389,15 @@ class FaikoutLocal extends IPSModule
                 return false;
             }
         }
-
-        // Prevent auto power switching in either state.
-        $payload = json_encode([
-            'autop' => false,
-            'autoptemp' => 0,
-            'tempadjust' => $enabled,
-        ]);
-        if ($payload === false || !$this->Publish('setting/' . $hostname, $payload)) {
-            return false;
-        }
-
+        $this->DisarmReference();
         $this->WriteAttributeBoolean('ExternalReferenceEnabled', $enabled);
         $this->SetValue('ExternalReferenceEnabled', $enabled);
-        $interval = max(30, $this->ReadPropertyInteger('PublishIntervalSeconds'));
-        $this->SetTimerInterval(
-            'ExternalTemperatureTimer',
-            ($enabled && $this->ReadPropertyInteger('SensorVariableID') > 0) ? $interval * 1000 : 0
-        );
-        $this->Trace('External Reference', $enabled
-            ? 'Enabled locally; settings published, remote confirmation pending'
-            : 'Disabled locally; settings published, remote confirmation pending');
-        // Deliver a fresh value immediately when enabled and available.
         if ($enabled) {
-            $this->SendSensorValue();
+            // Remember the desired state while offline. Re-negotiate upon state update.
+            return !$this->GetValue('Connected') || $this->ArmReference();
         }
-        return true;
+        $payload = json_encode(['autop' => false, 'autoptemp' => 0, 'tempadjust' => false]);
+        return $payload !== false && $this->Publish('setting/' . $hostname, $payload);
     }
 
     public function SetExternalTemperature(float $temperature): bool
@@ -348,8 +408,9 @@ class FaikoutLocal extends IPSModule
 
     public function SendSensorValue(): bool
     {
-        if (!$this->ReadAttributeBoolean('ExternalReferenceEnabled')) {
-            $this->Trace('Temperature skip', 'External temperature transmission disabled in Symcon');
+        if (!$this->ReadAttributeBoolean('ExternalReferenceEnabled') ||
+            !$this->GetValue('ExternalReferenceReady')) {
+            $this->Trace('Temperature skip', 'Reference disabled or Faikout settings not confirmed');
             return false;
         }
         $id = $this->ReadPropertyInteger('SensorVariableID');
