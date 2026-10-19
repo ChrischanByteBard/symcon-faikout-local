@@ -127,8 +127,9 @@ check($a->variables['ExternalReferenceEnabled']['profile']['PRESENTATION'] === V
 check(isset($a->subscriptions[12345][VM_UPDATE]), 'sensor variable subscribed');
 check($a->values['ExternalReferenceEnabled'] === false, 'initial switch off');
 check($a->variables['ExternalReferenceEnabled']['profile']['PRESENTATION'] === VARIABLE_PRESENTATION_SWITCH &&
-      !array_key_exists('ICON_TRUE', $a->variables['ExternalReferenceEnabled']['profile']),
-      'external temperature release remains a deliberate action without extra icon');
+      $a->variables['ExternalReferenceEnabled']['profile']['ICON_TRUE'] === 'circle-check' &&
+      $a->variables['ExternalReferenceEnabled']['profile']['USE_ICON_FALSE'] === false,
+      'external temperature enable remains an actionable switch with circle-check icon');
 check($a->variables['SwingVertical']['profile']['ICON_TRUE'] === 'arrows-up-down' &&
       $a->variables['SwingHorizontal']['profile']['ICON_TRUE'] === 'arrows-left-right',
       'both pre-existing swing variables get new icons immediately after ApplyChanges');
@@ -203,7 +204,7 @@ foreach ([
     'SwingVertical' => 'arrows-up-down',
     'SwingHorizontal' => 'arrows-left-right',
     'Comfort' => 'wind',
-    'IntelligentEye' => 'Person-running-fast',
+    'IntelligentEye' => 'person-running-fast',
 ] as $ident => $expectedIcon) {
     $presentation = $a->variables[$ident]['profile'];
     check($presentation['ICON_TRUE'] === $expectedIcon &&
