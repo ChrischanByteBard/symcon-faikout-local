@@ -16,7 +16,7 @@ Eigenständige MQTT-Integration für die lokale Steuerung kompatibler Daikin-Fai
 
 ## Objektbaum-Reihenfolge und Datenherkunft (v0.6.0)
 
-Die Variablen erhalten jetzt feste Symcon-Objektpositionen. Beim Aktualisieren werden **bereits vorhandene** Modulvariablen anhand ihrer Identifikatoren sortiert (`IPS_SetPosition`); neue, erst mit Faikout-Statusmeldungen angelegte Variablen bekommen ihre Position durch `MaintainVariable`. Keine Unterkategorien und keine Neuanlage existierender Variablen erforderlich. Verknüpfungen, Variablen-IDs, Archivdaten und benutzerdefinierte Darstellungen bleiben erhalten. Die Modulpositionen werden bei späteren Modulupdates erneut gesetzt; eine manuelle Objektposition kann dadurch wieder überschrieben werden. Fremde Unterobjekte werden nicht verändert.
+Die Variablen erhalten jetzt feste Symcon-Objektpositionen. Beim Aktualisieren werden **bereits vorhandene** Modulvariablen anhand ihrer Identifikatoren sortiert (`IPS_SetPosition`); neue, erst mit Faikout-Statusmeldungen angelegte Variablen bekommen ihre Position durch `MaintainVariable`. Keine Unterkategorien und keine Neuanlage existierender Variablen erforderlich. Verknüpfungen, Variablen-IDs, Archivdaten und benutzerdefinierte Darstellungen bleiben erhalten. Die Modulpositionen werden bei späteren Modulupdates erneut gesetzt; eine manuelle Objektposition kann dadurch wieder überschrieben werden. Fremde Unterobjekte werden nicht verändert. Die drei alten Standardnamen für Außentemperatur, Verdichter und Energiezähler werden beim Update sofort auf die neuen Kennzeichnungen umbenannt; selbst gewählte abweichende Namen bleiben bestehen.
 
 | Position | Bereich | Beispiele |
 | --- | --- | --- |
