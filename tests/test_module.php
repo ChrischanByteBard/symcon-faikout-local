@@ -111,7 +111,7 @@ check($a->variables['Temperature']['profile'] === 'FAIKOUT.TargetTemperature', '
 $a->ReceiveData(packet('state/wohnzimmer', '{"fan":"Q"}'));
 check($a->variables['Fan']['profile'] === 'FAIKOUT.Fan' && $a->values['Fan'] === 'Q', 'fan profile attached and quiet level read');
 check($a->values['Connected'] === true && $a->values['AirconOnline'] === true, 'online status');
-check(count(array_filter($a->debug, fn($x) => $x[0] === 'MQTT RX Topic')) === 1, 'received topic appears in debug');
+check(count(array_filter($a->debug, fn($x) => $x[0] === 'MQTT RX Topic')) === 2, 'received status and fan updates appear in debug');
 check(count($b->debug) === 0, 'debug disabled by default');
 $a->ReceiveData(packet('state/wohnzimmer', 'false'));
 check($a->values['Connected'] === false, 'MQTT last will');
