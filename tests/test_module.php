@@ -126,6 +126,15 @@ check($a->variables['ExternalReferenceEnabled']['profile']['PRESENTATION'] === V
     'local control uses native switch presentation');
 check(isset($a->subscriptions[12345][VM_UPDATE]), 'sensor variable subscribed');
 check($a->values['ExternalReferenceEnabled'] === false, 'initial switch off');
+check($a->variables['ExternalReferenceEnabled']['profile']['PRESENTATION'] === VARIABLE_PRESENTATION_SWITCH &&
+      !array_key_exists('ICON_TRUE', $a->variables['ExternalReferenceEnabled']['profile']),
+      'external temperature release remains a deliberate action without extra icon');
+check($a->variables['SwingVertical']['profile']['ICON_TRUE'] === 'arrows-up-down' &&
+      $a->variables['SwingHorizontal']['profile']['ICON_TRUE'] === 'arrows-left-right',
+      'both pre-existing swing variables get new icons immediately after ApplyChanges');
+check(!isset($a->variables['Comfort']) && !isset($a->variables['IntelligentEye']),
+      'upgrading does not create capabilities absent from the device status');
+
 check($b->SetExternalReferenceEnabled(true) === false && count($b->sent) === 0, 'cannot activate without sensor');
 check(!$a->SendSensorValue(), 'no temperature sent when disabled');
 
@@ -147,6 +156,7 @@ check($a->variables['EnergyWh']['position'] === 62 &&
       'energy meter clearly identified as system reading');
 $modePresentation = $a->variables['Mode']['profile'];
 check($modePresentation['PRESENTATION'] === VARIABLE_PRESENTATION_ENUMERATION, 'native enumeration for mode');
+check($modePresentation['ICON'] === 'heatpump', 'mode icon is heatpump');
 $modeOptions = json_decode($modePresentation['OPTIONS'], true);
 check(in_array(['Value'=>'H','Caption'=>'Heizen','IconActive'=>false,'IconValue'=>'','Color'=>-1], $modeOptions, true) &&
       in_array(['Value'=>'C','Caption'=>'Kühlen','IconActive'=>false,'IconValue'=>'','Color'=>-1], $modeOptions, true), 'native mode choices preserved');
@@ -155,6 +165,7 @@ check(count($modeOptions) === 5 && count(array_filter($modeOptions, function ($o
         !array_key_exists('IconValue', $option) || !array_key_exists('Color', $option);
 })) === 0, 'all mode options have mandatory enumeration keys');
 $tempPresentation = $a->variables['Temperature']['profile'];
+check($tempPresentation['ICON'] === 'temperature-half', 'temperature slider icon');
 check($tempPresentation['PRESENTATION'] === VARIABLE_PRESENTATION_SLIDER &&
       $tempPresentation['MIN'] === 10.0 && $tempPresentation['MAX'] === 32.0 &&
       $tempPresentation['STEP_SIZE'] === 0.5 && $tempPresentation['DIGITS'] === 1,
@@ -166,14 +177,17 @@ check($a->variables['HomeTemperature']['profile']['PRESENTATION'] === VARIABLE_P
 $a->ReceiveData(packet('state/wohnzimmer', '{"fan":"Q"}'));
 $fanPresentation = $a->variables['Fan']['profile'];
 $fanOptions = json_decode($fanPresentation['OPTIONS'], true);
+check($fanPresentation['ICON'] === 'gauge-low', 'fan selector icon');
 check($fanPresentation['PRESENTATION'] === VARIABLE_PRESENTATION_ENUMERATION &&
       in_array(['Value'=>'Q','Caption'=>'Leise / Nacht','IconActive'=>false,'IconValue'=>'','Color'=>-1], $fanOptions, true) &&
       $a->values['Fan'] === 'Q', 'native fan choices preserve actual Faikout codes');
-// Airflow variables must only be created when the device actually reports them.
-check(!isset($a->variables['SwingVertical']) &&
-      !isset($a->variables['SwingHorizontal']) &&
+// Only existing swing variables are refreshed on upgrade. Unreported optional
+// capabilities must still remain absent until the device advertises them.
+check(isset($a->variables['SwingVertical']) &&
+      isset($a->variables['SwingHorizontal']) &&
       !isset($a->variables['Comfort']) &&
-      !isset($a->variables['IntelligentEye']), 'unsupported airflow controls not shown preemptively');
+      !isset($a->variables['IntelligentEye']),
+      'existing swing controls migrated without creating optional controls');
 $a->ReceiveData(packet('state/wohnzimmer', '{"swingv":true,"swingh":false,"comfort":true,"sensor":false}'));
 foreach ([
     'SwingVertical' => true,
@@ -184,6 +198,17 @@ foreach ([
     check(($a->values[$ident] ?? null) === $expected &&
           $a->variables[$ident]['profile']['PRESENTATION'] === VARIABLE_PRESENTATION_SWITCH,
           'native controllable switch and MQTT status for ' . $ident);
+}
+foreach ([
+    'SwingVertical' => 'arrows-up-down',
+    'SwingHorizontal' => 'arrows-left-right',
+    'Comfort' => 'wind',
+    'IntelligentEye' => 'Person-running-fast',
+] as $ident => $expectedIcon) {
+    $presentation = $a->variables[$ident]['profile'];
+    check($presentation['ICON_TRUE'] === $expectedIcon &&
+          $presentation['USE_ICON_FALSE'] === false,
+          'device switch ' . $ident . ' uses correct icon for both states');
 }
 check($a->variables['SwingVertical']['position'] === 20 &&
       $a->variables['SwingHorizontal']['position'] === 21 &&
