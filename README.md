@@ -1,6 +1,6 @@
 # Faikout Local – Symcon 9.0
 
-**Entwicklungsprototyp v0.3.0. Nicht für produktiven Heizbetrieb freigegeben.**
+**Entwicklungsprototyp v0.4.0. Nicht für produktiven Heizbetrieb freigegeben.**
 
 Eigenständige MQTT-Integration für die lokale Steuerung kompatibler Daikin-Faikout-Geräte über den integrierten Symcon-MQTT-Server. Kein Fork des archivierten Moduls *Faikin 4 Daikin*. Eigene Modul-IDs.
 
@@ -14,7 +14,20 @@ Eigenständige MQTT-Integration für die lokale Steuerung kompatibler Daikin-Fai
 - Bei Wechsel der ausgewählten Sensorvariable wird die alte Symcon-Nachrichtenregistrierung entfernt und die neue registriert.
 - Diese Änderung betrifft nur die Weitergabe des Messwerts, **nicht** die interne Inverterregelung der Daikin.
 
-## Bedienprofile (v0.3.0)
+## Moderne Symcon-Darstellungen (v0.4.0)
+
+Die Legacy-Profile für Betriebsart, Lüfterstufe und Solltemperatur wurden im Modul durch native Symcon-Darstellungen (Symcon >= 8.0) ersetzt:
+
+- Betriebsart und Lüfterstufe: Aufzählung mit den originalen Faikout-Stringwerten als Optionen.
+- Solltemperatur: Schieberegler mit Bereich 10–32 °C und 0,5-°C-Schritten.
+- Geräte-Ein/Aus und Freigabe der externen Temperaturregelung: Schalter.
+- Daikin-Temperaturmesswerte: Temperatur-Wertanzeigen.
+
+Die Instanz nutzt die neuen Darstellungen über `MaintainVariable()` und `RegisterVariableBoolean()`, **ohne** globale Legacy-Profile neu anzulegen oder individuelle Darstellungen der Benutzer zu überschreiben. Identifikatoren, Variablentypen, Verknüpfungen und Archive bleiben bestehen. Bei bestehenden Messwertvariablen wird die Darstellung bei der nächsten eingehenden Statusmeldung aktualisiert.
+
+Die Mindeständerung im Konfigurationsformular heißt nun kurz **Mindeständerung (K)** und nutzt `NumberSpinner.digits=1`, damit der Standardwert `0,2` korrekt angezeigt wird.
+
+## Bedienfunktionen (v0.4.0)
 
 Die vorhandenen String-Variablen behalten ihre IDs und ihre Faikout-Rohwerte, erhalten aber ein Auswahlprofil in Symcon:
 
