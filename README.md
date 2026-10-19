@@ -1,6 +1,6 @@
 # Faikout Local – Symcon 9.0
 
-**Entwicklungsprototyp v0.4.0. Nicht für produktiven Heizbetrieb freigegeben.**
+**Entwicklungsprototyp v0.4.1. Nicht für produktiven Heizbetrieb freigegeben.**
 
 Eigenständige MQTT-Integration für die lokale Steuerung kompatibler Daikin-Faikout-Geräte über den integrierten Symcon-MQTT-Server. Kein Fork des archivierten Moduls *Faikin 4 Daikin*. Eigene Modul-IDs.
 
@@ -13,6 +13,12 @@ Eigenständige MQTT-Integration für die lokale Steuerung kompatibler Daikin-Fai
 - Die Übertragung bleibt gesperrt, wenn die externe Regelung deaktiviert ist oder die sicheren Faikout-Einstellungen nicht bestätigt sind.
 - Bei Wechsel der ausgewählten Sensorvariable wird die alte Symcon-Nachrichtenregistrierung entfernt und die neue registriert.
 - Diese Änderung betrifft nur die Weitergabe des Messwerts, **nicht** die interne Inverterregelung der Daikin.
+
+## Korrektur v0.4.1: Ungültiges Aufzählungsformular
+
+Bei Symcon 9 müssen die Einträge der nativen Aufzählungsdarstellung zusätzlich zu `Value` und `Caption` immer die Felder `IconActive` (false), `IconValue` (leer) und `Color` (-1) enthalten. Diese Felder sind nun für alle Betriebsarten und Lüfterstufen gesetzt. Die Statuswertanzeigen für MQTT-Verbindung und bestätigte Einstellungen erhalten analog die Felder `IconActive`, `IconValue`, `ColorActive` und `ColorValue`. Vorhandene Variablen-IDs, Werte und Aktionen bleiben unverändert.
+
+Die Darstellung wird bei den dynamischen Statusvariablen bei der nächsten Statusmeldung aus `state/<hostname>` neu gesetzt. Zum Testen danach Betriebsart/Lüfterstufe öffnen und die Optionsliste bearbeiten.
 
 ## Moderne Symcon-Darstellungen (v0.4.0)
 
