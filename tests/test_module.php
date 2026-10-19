@@ -20,13 +20,18 @@ function GetValue($id) { return $GLOBALS['sensor'][$id]['value']; }
 $GLOBALS['mockObjects'] = [
     501 => ['ObjectIdent' => 'SwingVertical', 'ObjectPosition' => 20],
     502 => ['ObjectIdent' => 'SwingHorizontal', 'ObjectPosition' => 20],
-    503 => ['ObjectIdent' => 'CompressorRaw', 'ObjectPosition' => 20],
+    503 => ['ObjectIdent' => 'CompressorRaw', 'ObjectPosition' => 20, 'ObjectName' => 'Kompressor (Rohwert)'],
+    505 => ['ObjectIdent' => 'OutdoorTemperature', 'ObjectPosition' => 20, 'ObjectName' => 'Außentemperatur'],
+    506 => ['ObjectIdent' => 'EnergyWh', 'ObjectPosition' => 20, 'ObjectName' => 'Energiezähler Wh (Rohwert)'],
+    507 => ['ObjectIdent' => 'OutdoorTemperature', 'ObjectPosition' => 99, 'ObjectName' => 'Meine Wetterstation Außentemp'],
     504 => ['ObjectIdent' => 'UserVariable', 'ObjectPosition' => 777],
 ];
-$GLOBALS['mockChildren'] = [41675 => [501,502,503,504], 41676 => []];
+$GLOBALS['mockChildren'] = [41675 => [501,502,503,504,505,506,507], 41676 => []];
 function IPS_GetChildrenIDs($parent) { return $GLOBALS['mockChildren'][$parent] ?? []; }
 function IPS_GetObject($id) { return $GLOBALS['mockObjects'][$id]; }
 function IPS_SetPosition($id, $position) { $GLOBALS['mockObjects'][$id]['ObjectPosition'] = $position; return true; }
+function IPS_GetName($id) { return $GLOBALS['mockObjects'][$id]['ObjectName'] ?? ''; }
+function IPS_SetName($id, $name) { $GLOBALS['mockObjects'][$id]['ObjectName'] = $name; return true; }
 
 class IPSModule
 {
@@ -100,6 +105,15 @@ check($GLOBALS['mockObjects'][501]['ObjectPosition'] === 20 &&
       'existing swing and compressor variables sorted immediately during upgrade');
 check($GLOBALS['mockObjects'][504]['ObjectPosition'] === 777,
       'unknown user-owned objects are not moved');
+check($GLOBALS['mockObjects'][503]['ObjectName'] === 'Außengerät · Verdichter (Rohwert)' &&
+      $GLOBALS['mockObjects'][505]['ObjectName'] === 'Außengerät · Außentemperatur' &&
+      $GLOBALS['mockObjects'][506]['ObjectName'] === 'System · Energiezähler Wh (Rohwert)',
+      'legacy captions migrate immediately on upgrade');
+check($GLOBALS['mockObjects'][507]['ObjectName'] === 'Meine Wetterstation Außentemp',
+      'custom user captions remain untouched');
+check($GLOBALS['mockObjects'][505]['ObjectPosition'] === 60 &&
+      $GLOBALS['mockObjects'][506]['ObjectPosition'] === 62,
+      'existing outdoor/system metrics are sorted together');
 check($a->variables['Connected']['position'] === 0 &&
       $a->variables['LastStatus']['position'] === 2 &&
       $a->variables['ExternalReferenceEnabled']['position'] === 3,
