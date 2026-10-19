@@ -73,8 +73,8 @@ class FaikoutLocal extends IPSModule
             'Faikout MQTT verbunden',
             ['PRESENTATION' => VARIABLE_PRESENTATION_VALUE_PRESENTATION,
                 'OPTIONS' => json_encode([
-                    ['Value' => false, 'Caption' => 'Offline'],
-                    ['Value' => true, 'Caption' => 'Online'],
+                    ['Value' => false, 'Caption' => 'Offline', 'IconActive' => false, 'IconValue' => '', 'ColorActive' => false, 'ColorValue' => -1],
+                    ['Value' => true, 'Caption' => 'Online', 'IconActive' => false, 'IconValue' => '', 'ColorActive' => false, 'ColorValue' => -1],
                 ])],
             0
         );
@@ -90,8 +90,8 @@ class FaikoutLocal extends IPSModule
             'Faikout-Einstellungen bestätigt',
             ['PRESENTATION' => VARIABLE_PRESENTATION_VALUE_PRESENTATION,
                 'OPTIONS' => json_encode([
-                    ['Value' => false, 'Caption' => 'Ausstehend'],
-                    ['Value' => true, 'Caption' => 'Bestätigt'],
+                    ['Value' => false, 'Caption' => 'Ausstehend', 'IconActive' => false, 'IconValue' => '', 'ColorActive' => false, 'ColorValue' => -1],
+                    ['Value' => true, 'Caption' => 'Bestätigt', 'IconActive' => false, 'IconValue' => '', 'ColorActive' => false, 'ColorValue' => -1],
                 ])],
             3
         );
@@ -134,6 +134,14 @@ class FaikoutLocal extends IPSModule
                 ['Value' => 'D', 'Caption' => 'Entfeuchten'],
                 ['Value' => 'F', 'Caption' => 'Lüften'],
             ];
+            // Symcon's enumeration editor requires all option keys.
+            $choices = array_map(static function (array $choice): array {
+                return $choice + [
+                    'IconActive' => false,
+                    'IconValue' => '',
+                    'Color' => -1,
+                ];
+            }, $choices);
             return [
                 'PRESENTATION' => VARIABLE_PRESENTATION_ENUMERATION,
                 'DISPLAY' => 0,
@@ -151,6 +159,14 @@ class FaikoutLocal extends IPSModule
                 ['Value' => '4', 'Caption' => 'Stufe 4'],
                 ['Value' => '5', 'Caption' => 'Stufe 5'],
             ];
+            // Symcon's enumeration editor requires all option keys.
+            $choices = array_map(static function (array $choice): array {
+                return $choice + [
+                    'IconActive' => false,
+                    'IconValue' => '',
+                    'Color' => -1,
+                ];
+            }, $choices);
             return [
                 'PRESENTATION' => VARIABLE_PRESENTATION_ENUMERATION,
                 'DISPLAY' => 0,
