@@ -4,6 +4,7 @@ const VARIABLETYPE_BOOLEAN = 0;
 const VARIABLETYPE_INTEGER = 1;
 const VARIABLETYPE_FLOAT = 2;
 const VARIABLETYPE_STRING = 3;
+const VM_UPDATE = 10603;
 
 $GLOBALS['sensor'] = [12345 => ['updated' => time(), 'value' => 21.25]];
 function IPS_VariableExists($id) { return isset($GLOBALS['sensor'][$id]); }
@@ -12,22 +13,32 @@ function GetValue($id) { return $GLOBALS['sensor'][$id]['value']; }
 
 class IPSModule
 {
-    public array $properties = [], $attributes = [], $values = [], $timers = [], $sent = [], $debug = [];
+    public array $properties = [], $attributes = [], $values = [], $timers = [], $sent = [], $debug = [], $subscriptions = [];
     public function Create() {}
     public function ApplyChanges() {}
     public function ConnectParent($x) {}
     public function RegisterPropertyString($n, $v) { $this->properties[$n] = $v; }
     public function RegisterPropertyInteger($n, $v) { $this->properties[$n] = $v; }
     public function RegisterPropertyBoolean($n, $v) { $this->properties[$n] = $v; }
+    public function RegisterPropertyFloat($n, $v) { $this->properties[$n] = $v; }
+    public function ReadPropertyFloat($n) { return (float)$this->properties[$n]; }
     public function ReadPropertyString($n) { return (string)$this->properties[$n]; }
     public function ReadPropertyInteger($n) { return (int)$this->properties[$n]; }
     public function ReadPropertyBoolean($n) { return (bool)$this->properties[$n]; }
     public function RegisterAttributeBoolean($n, $v) { $this->attributes[$n] = $v; }
+    public function RegisterAttributeFloat($n, $v) { $this->attributes[$n] = $v; }
+    public function ReadAttributeFloat($n) { return (float)$this->attributes[$n]; }
+    public function WriteAttributeFloat($n, $v) { $this->attributes[$n] = (float)$v; }
+    public function RegisterAttributeInteger($n, $v) { $this->attributes[$n] = $v; }
+    public function ReadAttributeInteger($n) { return (int)$this->attributes[$n]; }
+    public function WriteAttributeInteger($n, $v) { $this->attributes[$n] = (int)$v; }
     public function ReadAttributeBoolean($n) { return (bool)$this->attributes[$n]; }
     public function WriteAttributeBoolean($n, $v) { $this->attributes[$n] = $v; }
     public function RegisterTimer($n, $v, $s) { $this->timers[$n] = $v; }
     public function SetTimerInterval($n, $v) { $this->timers[$n] = $v; }
     public function SetReceiveDataFilter($f) {}
+    public function RegisterMessage($id, $msg) { $this->subscriptions[$id][$msg] = true; }
+    public function UnregisterMessage($id, $msg) { unset($this->subscriptions[$id][$msg]); }
     public function RegisterVariableBoolean($n, $c, $p, $i) { $this->values[$n] = false; }
     public function RegisterVariableInteger($n, $c, $p, $i) { $this->values[$n] = 0; }
     public function RegisterVariableString($n, $c, $p, $i) { $this->values[$n] = ''; }
@@ -58,6 +69,7 @@ $b->properties['Hostname'] = 'kueche';
 $b->ApplyChanges();
 
 check($a->timers['ExternalTemperatureTimer'] === 0, 'external reference disabled by default');
+check(isset($a->subscriptions[12345][VM_UPDATE]), 'sensor variable subscribed');
 check($a->values['ExternalReferenceEnabled'] === false, 'initial switch off');
 check($b->SetExternalReferenceEnabled(true) === false && count($b->sent) === 0, 'cannot activate without sensor');
 check(!$a->SendSensorValue(), 'no temperature sent when disabled');
@@ -95,6 +107,25 @@ check($a->values['TempAdjust'] === true && $a->values['ControlTimeout'] === 600,
 check($a->values['ExternalReferenceReady'] === true, 'external reference confirmed');
 check($a->timers['ExternalTemperatureTimer'] === 120000, 'timer starts after acknowledgement');
 check($a->sent[2]['Topic'] === 'command/wohnzimmer/control' && $a->sent[2]['Payload'] === '{"env":21.3}', 'external sensor published after acknowledgement');
+// Event updates are throttled and compared to the last value sent, not the last event.
+$afterAck = count($a->sent);
+$GLOBALS['sensor'][12345] = ['updated' => time(), 'value' => 21.50];
+$a->MessageSink(1, 77777, VM_UPDATE, []);
+check(count($a->sent) === $afterAck, 'updates from foreign sensor ignored');
+$a->MessageSink(1, 12345, VM_UPDATE, []);
+check(count($a->sent) === $afterAck, 'meaningful sensor update throttled after recent send');
+$a->attributes['LastPublishedSensorAt'] = time() - 31;
+$a->MessageSink(1, 12345, VM_UPDATE, []);
+check(count($a->sent) === $afterAck + 1 && lastPacket($a)['Payload'] === '{"env":21.5}', 'significant sensor change sends promptly');
+$afterChange = count($a->sent);
+$a->attributes['LastPublishedSensorAt'] = time() - 31;
+$GLOBALS['sensor'][12345] = ['updated' => time(), 'value' => 21.55];
+$a->MessageSink(1, 12345, VM_UPDATE, []);
+check(count($a->sent) === $afterChange, 'small change below 0.2 K not sent immediately');
+$a->SendSensorValue();
+check(count($a->sent) === $afterChange + 1 && lastPacket($a)['Payload'] === '{"env":21.6}', 'periodic heartbeat still sends minor changes');
+$GLOBALS['sensor'][12345] = ['updated' => time(), 'value' => 21.25];
+
 $a->ReceiveData(packet('state/wohnzimmer', 'false'));
 check($a->values['ExternalReferenceReady'] === false &&
       $a->timers['ExternalTemperatureTimer'] === 0, 'disconnect stops transmission immediately');
@@ -121,4 +152,9 @@ check(!$a->SetExternalTemperature(99), 'implausible temperature rejected');
 $a->ReceiveData(packet('state/wohnzimmer', 'false'));
 check($a->values['ExternalReferenceReady'] === false &&
       $a->timers['ExternalTemperatureTimer'] === 0, 'MQTT disconnect disarms sensor forwarding');
+$a->properties['SensorVariableID'] = 23456;
+$GLOBALS['sensor'][23456] = ['updated' => time(), 'value' => 20.1];
+$a->ApplyChanges();
+check(!isset($a->subscriptions[12345][VM_UPDATE]), 'old sensor subscription removed after reconfiguration');
+check(isset($a->subscriptions[23456][VM_UPDATE]), 'new sensor subscription registered');
 echo "All tests passed\n";
