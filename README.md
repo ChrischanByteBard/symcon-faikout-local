@@ -1,6 +1,6 @@
 # Faikout Local – Symcon 9.0
 
-**Entwicklungsprototyp v0.4.2. Nicht für produktiven Heizbetrieb freigegeben.**
+**Entwicklungsprototyp v0.5.0. Nicht für produktiven Heizbetrieb freigegeben.**
 
 Eigenständige MQTT-Integration für die lokale Steuerung kompatibler Daikin-Faikout-Geräte über den integrierten Symcon-MQTT-Server. Kein Fork des archivierten Moduls *Faikin 4 Daikin*. Eigene Modul-IDs.
 
@@ -13,6 +13,25 @@ Eigenständige MQTT-Integration für die lokale Steuerung kompatibler Daikin-Fai
 - Die Übertragung bleibt gesperrt, wenn die externe Regelung deaktiviert ist oder die sicheren Faikout-Einstellungen nicht bestätigt sind.
 - Bei Wechsel der ausgewählten Sensorvariable wird die alte Symcon-Nachrichtenregistrierung entfernt und die neue registriert.
 - Diese Änderung betrifft nur die Weitergabe des Messwerts, **nicht** die interne Inverterregelung der Daikin.
+
+## Luftstromsteuerung (v0.5.0)
+
+Faikout liefert modell- und protokollabhängige Steuer-/Statusfelder. Dieses Modul legt die folgenden **nativen Symcon-Schalter dynamisch** an, **nur wenn das jeweilige Feld in einer MQTT-Statusmeldung des Innengeräts vorhanden ist**:
+
+| MQTT-Feld | Symcon-Variable | Funktion |
+| --- | --- | --- |
+| `swingv` | Vertikaler Schwenkbetrieb (auf/ab) | Automatisches Schwenken in der Vertikalen |
+| `swingh` | Horizontaler Schwenkbetrieb (links/rechts) | Automatisches Schwenken in der Horizontalen |
+| `comfort` | Komfort-Luftstrom (geräteabhängig) | Modellabhängige Komfortfunktion |
+| `sensor` | Bewegungssensor-Funktion (experimentell) | Versuch, die vorhandene Sensorfunktion am Innengerät umzuschalten |
+
+Alle Steuerbefehle werden nicht-retained über `command/<hostname>/control` als boolescher JSON-Wert versendet; die angezeigten Werte aktualisieren sich aus `state/<hostname>`. Beispiel `{"swingv":true}`. Vertikal- und Horizontal-Schwenken gleichzeitig entspricht dem 3D-Schwenkbetrieb, soweit das Innengerät ihn unterstützt.
+
+**Grenzen:** Die Felder `swingh` und `swingv` erlauben das **Ein-/Ausschalten der Oszillation**, nicht die Auswahl einer beliebigen festen Lamellenposition oder Winkelvorgabe. Die Funktion `sensor` ist nicht als zuverlässig funktionierende Intelligent-Eye-Steuerung auf jedem Perfera-S21-Modell bestätigt und ist nicht mit einer Positions-/Personenmeldung gleichzusetzen. Das S21-Protokoll liefert nach dem bekannten Stand keine bestätigten Bewegungszonen oder Präsenzerkennungsdaten. `comfort` kann ebenfalls von Modell und Firmware abhängig sein.
+
+Bei echter Hardware anhand der zurückgemeldeten MQTT-Statusdaten und der Reaktion des Geräts überprüfen. Unbekannte Optionen werden niemals auf gut Glück als aktiv gemeldet.
+
+**Quellen:** https://www.faikin.au/pages/faikin-faikout-mqtt-manual; https://github.com/revk/xESP32-Faikout/issues/788; https://github.com/revk/xESP32-Faikout/issues/342
 
 ## Korrektur v0.4.2: Verbliebene Legacy-Darstellungen
 
