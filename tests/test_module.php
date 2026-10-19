@@ -171,7 +171,7 @@ check(count($airconOptions) === 2 &&
       in_array(['Value'=>true,'Caption'=>'Antwortet','IconActive'=>false,
                 'IconValue'=>'','ColorActive'=>false,'ColorValue'=>-1], $airconOptions, true),
       'aircon response options are complete and labelled');
-check(count(array_filter($a->debug, fn($x) => $x[0] === 'MQTT RX Topic')) === 2, 'received status and fan updates appear in debug');
+check(count(array_filter($a->debug, fn($x) => $x[0] === 'MQTT RX Topic')) === 3, 'received status, fan, and airflow updates appear in debug');
 check(count($b->debug) === 0, 'debug disabled by default');
 $a->ReceiveData(packet('state/wohnzimmer', 'false'));
 check($a->values['Connected'] === false, 'MQTT last will');
