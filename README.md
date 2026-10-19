@@ -1,6 +1,6 @@
 # Faikout Local – Symcon 9.0
 
-**Entwicklungsprototyp v0.5.0. Nicht für produktiven Heizbetrieb freigegeben.**
+**Entwicklungsprototyp v0.6.0. Nicht für produktiven Heizbetrieb freigegeben.**
 
 Eigenständige MQTT-Integration für die lokale Steuerung kompatibler Daikin-Faikout-Geräte über den integrierten Symcon-MQTT-Server. Kein Fork des archivierten Moduls *Faikin 4 Daikin*. Eigene Modul-IDs.
 
@@ -13,6 +13,27 @@ Eigenständige MQTT-Integration für die lokale Steuerung kompatibler Daikin-Fai
 - Die Übertragung bleibt gesperrt, wenn die externe Regelung deaktiviert ist oder die sicheren Faikout-Einstellungen nicht bestätigt sind.
 - Bei Wechsel der ausgewählten Sensorvariable wird die alte Symcon-Nachrichtenregistrierung entfernt und die neue registriert.
 - Diese Änderung betrifft nur die Weitergabe des Messwerts, **nicht** die interne Inverterregelung der Daikin.
+
+## Objektbaum-Reihenfolge und Datenherkunft (v0.6.0)
+
+Die Variablen erhalten jetzt feste Symcon-Objektpositionen. Beim Aktualisieren werden **bereits vorhandene** Modulvariablen anhand ihrer Identifikatoren sortiert (`IPS_SetPosition`); neue, erst mit Faikout-Statusmeldungen angelegte Variablen bekommen ihre Position durch `MaintainVariable`. Keine Unterkategorien und keine Neuanlage existierender Variablen erforderlich. Verknüpfungen, Variablen-IDs, Archivdaten und benutzerdefinierte Darstellungen bleiben erhalten. Die Modulpositionen werden bei späteren Modulupdates erneut gesetzt; eine manuelle Objektposition kann dadurch wieder überschrieben werden. Fremde Unterobjekte werden nicht verändert.
+
+| Position | Bereich | Beispiele |
+| --- | --- | --- |
+| 0–4 | Verbindungsstatus/Freigaben | MQTT-Verbindung, Daikin antwortet, letzter Status, externe Regelung |
+| 10–13 | Bedienung Innengerät | Ein/Aus, Modus, Solltemperatur, Lüfter |
+| 20–26 | Luftstrom und Komfort | Swing vertikal/horizontal, Komfort, Sensor, Powerful, Econo, Streamer |
+| 40–47 | Innenraumtemperaturen/Betrieb | Raum- und Ansaugtemperatur, Referenztemperatur, Fan-RPM |
+| 60–62 | Außengerät/Gesamtsystem | Außentemperatur, Verdichter, System-Energiezähler |
+| 70–88 | Faikout-Automatik/Einstellungen | AutoPower, Temperatur-Timeout usw. |
+| 90–96 | Diagnose | Firmware, letzter JSON-Status, Fehler |
+
+**Quellenhinweise:**
+- `outside` stammt aus der vom Außengerät gemeldeten Außentemperatur und wird in jeder Innengerät-Instanz als „Außengerät · Außentemperatur“ gekennzeichnet.
+- `comp` gehört zum Außengerät und kann dem S21-Verdichterfrequenzwert (`Rd/Sd`, Hz) entsprechen; solange die genaue Faikout-Ausgabe deiner FTXM-A-Modelle noch nicht geprüft ist, bleibt die Variable als **Rohwert** benannt und erhält keine unbelegte Einheit.
+- `Wh` kann beim S21-Protokoll (`FM/GM`) den **gemeinsamen Verbrauch aller Innengeräte an einem Außengerät** darstellen. Deswegen heißt die Variable „System · Energiezähler Wh (Rohwert)“. **Die `Wh`-Werte der drei Innengeräte nicht addieren**, bevor die Herkunft/Skalierung anhand echter FTXM-A-Statusmeldungen verifiziert wurde. Neuere S21-Protokollversionen bieten zusätzlich gerätebezogene Verbrauchszähler (`FU04`), deren separate Nutzung hier noch nicht implementiert ist.
+
+Protokollhintergrund: https://github-wiki-see.page/m/revk/xESP32-Faikout/wiki/S21-Protocol
 
 ## Luftstromsteuerung (v0.5.0)
 
