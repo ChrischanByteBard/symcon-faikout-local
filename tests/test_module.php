@@ -76,7 +76,7 @@ $b->properties['Hostname'] = 'kueche';
 $b->ApplyChanges();
 
 check($a->timers['ExternalTemperatureTimer'] === 0, 'external reference disabled by default');
-check($GLOBALS['profiles'] ?? [] === [], 'no legacy profiles created');
+check(!function_exists('IPS_CreateVariableProfile'), 'no legacy profile helper required');
 check($a->variables['ExternalReferenceEnabled']['profile']['PRESENTATION'] === VARIABLE_PRESENTATION_SWITCH,
     'local control uses native switch presentation');
 check(isset($a->subscriptions[12345][VM_UPDATE]), 'sensor variable subscribed');
@@ -87,7 +87,7 @@ check(!$a->SendSensorValue(), 'no temperature sent when disabled');
 $form = json_decode($a->GetConfigurationForm(), true);
 check(is_array($form) && str_contains(json_encode($form), 'Raumtemperatur (Symcon-Variable'), 'generic temperature UI');
 check(str_contains(json_encode($form), 'Externe Temperaturregelung aktivieren'), 'activation button in form');
-$deltaControls = array_filter($form['elements'][2]['items'] ?? [], fn($item)=>($item['name'] ?? '') === 'ImmediateDeltaKelvin');
+$deltaControls = array_filter($form['elements'][3]['items'] ?? [], fn($item)=>($item['name'] ?? '') === 'ImmediateDeltaKelvin');
 check(count($deltaControls) === 1, 'delta configuration field present');
 $deltaField = array_values($deltaControls)[0];
 check($deltaField['caption'] === 'Mindeständerung (K)' && $deltaField['digits'] === 1 &&
