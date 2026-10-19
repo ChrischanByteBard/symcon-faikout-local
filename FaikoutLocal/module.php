@@ -95,7 +95,13 @@ class FaikoutLocal extends IPSModule
                 ])],
             3
         );
-        $this->RegisterVariableInteger('LastStatus', 'Letzter Status', '~UnixTimestamp', 1);
+        $this->RegisterVariableInteger('LastStatus', 'Letzter Status', [
+            'PRESENTATION' => VARIABLE_PRESENTATION_DATE_TIME,
+            'DATE' => 1,
+            'MONTH_TEXT' => false,
+            'DAY_OF_THE_WEEK' => false,
+            'TIME' => 2,
+        ], 1);
         $this->RegisterVariableString('RawStatus', 'Letzter Status JSON', '', 95);
         $this->RegisterVariableString('LastError', 'Letzter Fehler', '', 96);
     }
@@ -183,6 +189,24 @@ class FaikoutLocal extends IPSModule
                 'DIGITS' => 1,
                 'SUFFIX' => ' °C',
                 'USAGE_TYPE' => 0,
+            ];
+        }
+        if ($ident === 'AirconOnline') {
+            // Read-only device communication state, not a manually operated switch.
+            return [
+                'PRESENTATION' => VARIABLE_PRESENTATION_VALUE_PRESENTATION,
+                'OPTIONS' => json_encode([
+                    [
+                        'Value' => false, 'Caption' => 'Keine Antwort',
+                        'IconActive' => false, 'IconValue' => '',
+                        'ColorActive' => false, 'ColorValue' => -1
+                    ],
+                    [
+                        'Value' => true, 'Caption' => 'Antwortet',
+                        'IconActive' => false, 'IconValue' => '',
+                        'ColorActive' => false, 'ColorValue' => -1
+                    ],
+                ], JSON_UNESCAPED_UNICODE),
             ];
         }
         if ($ident === 'Power' || $ident === 'ExternalReferenceEnabled') {
