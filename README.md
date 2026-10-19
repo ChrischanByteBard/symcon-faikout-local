@@ -16,19 +16,20 @@ Eigenständige MQTT-Integration für die lokale Steuerung kompatibler Daikin-Fai
 
 ## Bedien-Icons (v0.6.1)
 
-Sieben bedienbare Variablen erhalten die gewünschten Symcon-9-Icons:
+Acht bedienbare Variablen erhalten die gewünschten Symcon-9-Icons:
 
 | Variable | Icon |
 | --- | --- |
 | Vertikaler Schwenkbetrieb | `arrows-up-down` |
 | Horizontaler Schwenkbetrieb | `arrows-left-right` |
 | Betriebsart | `heatpump` |
+| Externe Temperaturregelung freigegeben (Symcon) | `circle-check` |
 | Solltemperatur | `temperature-half` |
 | Lüfterstufe | `gauge-low` |
 | Komfort-Luftstrom | `wind` |
-| Bewegungssensor-Funktion (experimentell) | `Person-running-fast` |
+| Bewegungssensor-Funktion (experimentell) | `person-running-fast` |
 
-Die Icons werden als **Modul-Darstellungen** vergeben: `ICON` für die Aufzählungen und den Schieberegler, `ICON_TRUE` für die Schalter (derselbe Wert für ein/aus bei `USE_ICON_FALSE=false`). Bestehende Variablen werden beim `ApplyChanges` aktualisiert. Benutzerseitig angepasste Darstellungen oder Objekt-/Link-Icons haben Vorrang. Weiterhin werden optionale Funktionen wie Comfort und Sensor **nicht neu angelegt**, solange sie vom Gerät noch nicht gemeldet wurden.
+Die Icons werden als **Modul-Darstellungen** vergeben: `ICON` für die Aufzählungen und den Schieberegler, `ICON_TRUE` für die Schalter (derselbe Wert für ein/aus bei `USE_ICON_FALSE=false`). Bestehende Variablen einschließlich des lokalen Freigabeschalters werden beim `ApplyChanges` aktualisiert. Benutzerseitig angepasste Darstellungen oder Objekt-/Link-Icons haben Vorrang. Weiterhin werden optionale Funktionen wie Comfort und Sensor **nicht neu angelegt**, solange sie vom Gerät noch nicht gemeldet wurden.
 
 **Wichtig:** `ExternalReferenceEnabled` bleibt bewusst ein **bedienbarer Schalter**, da die Variable die lokale Freigabe an Faikout auslöst. `ExternalReferenceReady` zeigt separat **nur** den quittierten Zustand an. Wer die Freigabe lediglich im Konfigurationsformular bedienen möchte, kann die Freigabevariable aus der Visualisierung ausblenden, statt die Modulsteuerung zu deaktivieren.
 
