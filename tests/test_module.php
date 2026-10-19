@@ -9,6 +9,7 @@ const VARIABLE_PRESENTATION_ENUMERATION = 'P_ENUM';
 const VARIABLE_PRESENTATION_SLIDER = 'P_SLIDER';
 const VARIABLE_PRESENTATION_SWITCH = 'P_SWITCH';
 const VARIABLE_PRESENTATION_VALUE_PRESENTATION = 'P_VALUE';
+const VARIABLE_PRESENTATION_DATE_TIME = 'P_DATE_TIME';
 
 $GLOBALS['sensor'] = [12345 => ['updated' => time(), 'value' => 21.25]];
 function IPS_VariableExists($id) { return isset($GLOBALS['sensor'][$id]); }
@@ -47,7 +48,10 @@ class IPSModule
         $this->values[$n] = false;
         $this->variables[$n] = ['caption'=>$c,'type'=>VARIABLETYPE_BOOLEAN,'profile'=>$p];
     }
-    public function RegisterVariableInteger($n, $c, $p, $i) { $this->values[$n] = 0; }
+    public function RegisterVariableInteger($n, $c, $p, $i) {
+        $this->values[$n] = 0;
+        $this->variables[$n] = ['caption'=>$c,'type'=>VARIABLETYPE_INTEGER,'profile'=>$p];
+    }
     public function RegisterVariableString($n, $c, $p, $i) { $this->values[$n] = ''; }
     public function MaintainVariable($n, $c, $t, $p, $i, $m) {$this->variables[$n] = ['caption'=>$c, 'type'=>$t, 'profile'=>$p];}
     public function EnableAction($n) {}
@@ -76,6 +80,9 @@ $b->properties['Hostname'] = 'kueche';
 $b->ApplyChanges();
 
 check($a->timers['ExternalTemperatureTimer'] === 0, 'external reference disabled by default');
+check($a->variables['LastStatus']['profile']['PRESENTATION'] === VARIABLE_PRESENTATION_DATE_TIME &&
+      $a->variables['LastStatus']['profile']['DATE'] === 1 &&
+      $a->variables['LastStatus']['profile']['TIME'] === 2, 'last status uses native date/time with seconds');
 check(!function_exists('IPS_CreateVariableProfile'), 'no legacy profile helper required');
 check($a->variables['ExternalReferenceEnabled']['profile']['PRESENTATION'] === VARIABLE_PRESENTATION_SWITCH,
     'local control uses native switch presentation');
@@ -135,6 +142,17 @@ foreach (['Connected','ExternalReferenceReady'] as $identifier) {
     })) === 0, 'status presentation ' . $identifier . ' has required keys');
 }
 check($a->values['Connected'] === true && $a->values['AirconOnline'] === true, 'online status');
+$airconStatus = $a->variables['AirconOnline'];
+check($airconStatus['type'] === VARIABLETYPE_BOOLEAN &&
+      $airconStatus['profile']['PRESENTATION'] === VARIABLE_PRESENTATION_VALUE_PRESENTATION,
+      'aircon response uses native read-only value presentation');
+$airconOptions = json_decode($airconStatus['profile']['OPTIONS'], true);
+check(count($airconOptions) === 2 &&
+      in_array(['Value'=>false,'Caption'=>'Keine Antwort','IconActive'=>false,
+                'IconValue'=>'','ColorActive'=>false,'ColorValue'=>-1], $airconOptions, true) &&
+      in_array(['Value'=>true,'Caption'=>'Antwortet','IconActive'=>false,
+                'IconValue'=>'','ColorActive'=>false,'ColorValue'=>-1], $airconOptions, true),
+      'aircon response options are complete and labelled');
 check(count(array_filter($a->debug, fn($x) => $x[0] === 'MQTT RX Topic')) === 2, 'received status and fan updates appear in debug');
 check(count($b->debug) === 0, 'debug disabled by default');
 $a->ReceiveData(packet('state/wohnzimmer', 'false'));

@@ -1,6 +1,6 @@
 # Faikout Local – Symcon 9.0
 
-**Entwicklungsprototyp v0.4.1. Nicht für produktiven Heizbetrieb freigegeben.**
+**Entwicklungsprototyp v0.4.2. Nicht für produktiven Heizbetrieb freigegeben.**
 
 Eigenständige MQTT-Integration für die lokale Steuerung kompatibler Daikin-Faikout-Geräte über den integrierten Symcon-MQTT-Server. Kein Fork des archivierten Moduls *Faikin 4 Daikin*. Eigene Modul-IDs.
 
@@ -13,6 +13,13 @@ Eigenständige MQTT-Integration für die lokale Steuerung kompatibler Daikin-Fai
 - Die Übertragung bleibt gesperrt, wenn die externe Regelung deaktiviert ist oder die sicheren Faikout-Einstellungen nicht bestätigt sind.
 - Bei Wechsel der ausgewählten Sensorvariable wird die alte Symcon-Nachrichtenregistrierung entfernt und die neue registriert.
 - Diese Änderung betrifft nur die Weitergabe des Messwerts, **nicht** die interne Inverterregelung der Daikin.
+
+## Korrektur v0.4.2: Verbliebene Legacy-Darstellungen
+
+- **Letzter Status** (Integer-Unixzeitstempel): natives Datum/Uhrzeit mit Datum und Sekunden, bisher `~UnixTimestamp`.
+- **Innengerät antwortet** (Boolean): native **nicht bedienbare** Wertanzeige `Antwortet` / `Keine Antwort` mit vollständig ausgefüllten Symcon-9-Optionsfeldern, bisher `~Switch`.
+- Vorhandene Variablen-Identifikatoren, IDs, Werte und Archive bleiben erhalten.
+- Die dynamisch registrierte Variable `Innengerät antwortet` bekommt ihre neue Darstellung bei der nächsten MQTT-Statusmeldung mit `online`. Die Datum/Uhrzeit-Darstellung wird mit dem Modul-Update registriert.
 
 ## Korrektur v0.4.1: Ungültiges Aufzählungsformular
 
