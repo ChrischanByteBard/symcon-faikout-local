@@ -5,21 +5,10 @@ const VARIABLETYPE_INTEGER = 1;
 const VARIABLETYPE_FLOAT = 2;
 const VARIABLETYPE_STRING = 3;
 const VM_UPDATE = 10603;
-$GLOBALS['profiles'] = [];
-function IPS_VariableProfileExists($name) {return isset($GLOBALS['profiles'][$name]);}
-function IPS_CreateVariableProfile($name, $type) {$GLOBALS['profiles'][$name] = ['type' => $type, 'associations' => []];return true;}
-function IPS_SetVariableProfileAssociation($name, $value, $caption, $icon, $color) {
-    $GLOBALS['profiles'][$name]['associations'][(string)$value] = $caption; return true;
-}
-function IPS_SetVariableProfileText($name, $prefix, $suffix) {
-    $GLOBALS['profiles'][$name]['prefix'] = $prefix; $GLOBALS['profiles'][$name]['suffix'] = $suffix; return true;
-}
-function IPS_SetVariableProfileDigits($name, $digits) {
-    $GLOBALS['profiles'][$name]['digits'] = $digits; return true;
-}
-function IPS_SetVariableProfileValues($name, $min, $max, $step) {
-    $GLOBALS['profiles'][$name]['range'] = [$min, $max, $step]; return true;
-}
+const VARIABLE_PRESENTATION_ENUMERATION = 'P_ENUM';
+const VARIABLE_PRESENTATION_SLIDER = 'P_SLIDER';
+const VARIABLE_PRESENTATION_SWITCH = 'P_SWITCH';
+const VARIABLE_PRESENTATION_VALUE_PRESENTATION = 'P_VALUE';
 
 $GLOBALS['sensor'] = [12345 => ['updated' => time(), 'value' => 21.25]];
 function IPS_VariableExists($id) { return isset($GLOBALS['sensor'][$id]); }
@@ -54,7 +43,10 @@ class IPSModule
     public function SetReceiveDataFilter($f) {}
     public function RegisterMessage($id, $msg) { $this->subscriptions[$id][$msg] = true; }
     public function UnregisterMessage($id, $msg) { unset($this->subscriptions[$id][$msg]); }
-    public function RegisterVariableBoolean($n, $c, $p, $i) { $this->values[$n] = false; }
+    public function RegisterVariableBoolean($n, $c, $p, $i) {
+        $this->values[$n] = false;
+        $this->variables[$n] = ['caption'=>$c,'type'=>VARIABLETYPE_BOOLEAN,'profile'=>$p];
+    }
     public function RegisterVariableInteger($n, $c, $p, $i) { $this->values[$n] = 0; }
     public function RegisterVariableString($n, $c, $p, $i) { $this->values[$n] = ''; }
     public function MaintainVariable($n, $c, $t, $p, $i, $m) {$this->variables[$n] = ['caption'=>$c, 'type'=>$t, 'profile'=>$p];}
@@ -84,15 +76,9 @@ $b->properties['Hostname'] = 'kueche';
 $b->ApplyChanges();
 
 check($a->timers['ExternalTemperatureTimer'] === 0, 'external reference disabled by default');
-check($GLOBALS['profiles']['FAIKOUT.Mode']['type'] === VARIABLETYPE_STRING, 'mode profile is string');
-check($GLOBALS['profiles']['FAIKOUT.Mode']['associations']['H'] === 'Heizen', 'heating mode selectable');
-check($GLOBALS['profiles']['FAIKOUT.Mode']['associations']['C'] === 'Kühlen', 'cool mode selectable');
-check($GLOBALS['profiles']['FAIKOUT.Fan']['associations']['A'] === 'Automatik', 'automatic fan selectable');
-check($GLOBALS['profiles']['FAIKOUT.Fan']['associations']['Q'] === 'Leise / Nacht', 'quiet fan selectable');
-check($GLOBALS['profiles']['FAIKOUT.Fan']['associations']['5'] === 'Stufe 5', 'manual fan selectable');
-check($GLOBALS['profiles']['FAIKOUT.TargetTemperature']['range'] === [10, 32, 0.5], 'target temperature range and step');
-check($GLOBALS['profiles']['FAIKOUT.TargetTemperature']['digits'] === 1, 'temperature single decimal');
-check($GLOBALS['profiles']['FAIKOUT.TargetTemperature']['suffix'] === ' °C', 'temperature unit');
+check(!function_exists('IPS_CreateVariableProfile'), 'no legacy profile helper required');
+check($a->variables['ExternalReferenceEnabled']['profile']['PRESENTATION'] === VARIABLE_PRESENTATION_SWITCH,
+    'local control uses native switch presentation');
 check(isset($a->subscriptions[12345][VM_UPDATE]), 'sensor variable subscribed');
 check($a->values['ExternalReferenceEnabled'] === false, 'initial switch off');
 check($b->SetExternalReferenceEnabled(true) === false && count($b->sent) === 0, 'cannot activate without sensor');
@@ -101,15 +87,36 @@ check(!$a->SendSensorValue(), 'no temperature sent when disabled');
 $form = json_decode($a->GetConfigurationForm(), true);
 check(is_array($form) && str_contains(json_encode($form), 'Raumtemperatur (Symcon-Variable'), 'generic temperature UI');
 check(str_contains(json_encode($form), 'Externe Temperaturregelung aktivieren'), 'activation button in form');
+$deltaControls = array_filter($form['elements'][3]['items'] ?? [], fn($item)=>($item['name'] ?? '') === 'ImmediateDeltaKelvin');
+check(count($deltaControls) === 1, 'delta configuration field present');
+$deltaField = array_values($deltaControls)[0];
+check($deltaField['caption'] === 'Mindeständerung (K)' && $deltaField['digits'] === 1 &&
+      $deltaField['minimum'] === 0.1, 'delta label short and one decimal visible');
 
 $a->ReceiveData(packet('state/kueche', '{"temp":19}'));
 check(!isset($a->values['Temperature']), 'foreign room ignored');
 $a->ReceiveData(packet('state/wohnzimmer', '{"online":true,"power":true,"temp":22,"home":21.1,"inlet":23.2,"Wh":1240,"mode":"H"}'));
 check($a->values['Temperature'] === 22.0 && $a->values['InletTemperature'] === 23.2, 'status parsed');
-check($a->variables['Mode']['profile'] === 'FAIKOUT.Mode', 'mode profile attached to received variable');
-check($a->variables['Temperature']['profile'] === 'FAIKOUT.TargetTemperature', 'target temperature profile attached');
+$modePresentation = $a->variables['Mode']['profile'];
+check($modePresentation['PRESENTATION'] === VARIABLE_PRESENTATION_ENUMERATION, 'native enumeration for mode');
+$modeOptions = json_decode($modePresentation['OPTIONS'], true);
+check(in_array(['Value'=>'H','Caption'=>'Heizen'], $modeOptions, true) &&
+      in_array(['Value'=>'C','Caption'=>'Kühlen'], $modeOptions, true), 'native mode choices preserved');
+$tempPresentation = $a->variables['Temperature']['profile'];
+check($tempPresentation['PRESENTATION'] === VARIABLE_PRESENTATION_SLIDER &&
+      $tempPresentation['MIN'] === 10.0 && $tempPresentation['MAX'] === 32.0 &&
+      $tempPresentation['STEP_SIZE'] === 0.5 && $tempPresentation['DIGITS'] === 1,
+      'native slider has correct range/steps');
+check($a->variables['Power']['profile']['PRESENTATION'] === VARIABLE_PRESENTATION_SWITCH,
+      'device power uses native switch');
+check($a->variables['HomeTemperature']['profile']['PRESENTATION'] === VARIABLE_PRESENTATION_VALUE_PRESENTATION,
+      'room sensor uses native value presentation');
 $a->ReceiveData(packet('state/wohnzimmer', '{"fan":"Q"}'));
-check($a->variables['Fan']['profile'] === 'FAIKOUT.Fan' && $a->values['Fan'] === 'Q', 'fan profile attached and quiet level read');
+$fanPresentation = $a->variables['Fan']['profile'];
+$fanOptions = json_decode($fanPresentation['OPTIONS'], true);
+check($fanPresentation['PRESENTATION'] === VARIABLE_PRESENTATION_ENUMERATION &&
+      in_array(['Value'=>'Q','Caption'=>'Leise / Nacht'], $fanOptions, true) &&
+      $a->values['Fan'] === 'Q', 'native fan choices preserve actual Faikout codes');
 check($a->values['Connected'] === true && $a->values['AirconOnline'] === true, 'online status');
 check(count(array_filter($a->debug, fn($x) => $x[0] === 'MQTT RX Topic')) === 2, 'received status and fan updates appear in debug');
 check(count($b->debug) === 0, 'debug disabled by default');

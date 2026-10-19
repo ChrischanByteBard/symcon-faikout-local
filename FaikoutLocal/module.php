@@ -12,8 +12,8 @@ class FaikoutLocal extends IPSModule
 
     private const FIELDS = [
         'power' => ['Power', 'Eingeschaltet', 0, '~Switch', true],
-        'mode' => ['Mode', 'Betriebsart', 3, 'FAIKOUT.Mode', true],
-        'temp' => ['Temperature', 'Solltemperatur', 2, 'FAIKOUT.TargetTemperature', true],
+        'mode' => ['Mode', 'Betriebsart', 3, '', true],
+        'temp' => ['Temperature', 'Solltemperatur', 2, '', true],
         'home' => ['HomeTemperature', 'Raumtemperatur Daikin', 2, '~Temperature', false],
         'inlet' => ['InletTemperature', 'Ansaugtemperatur', 2, '~Temperature', false],
         'outside' => ['OutdoorTemperature', 'Außentemperatur', 2, '~Temperature', false],
@@ -22,7 +22,7 @@ class FaikoutLocal extends IPSModule
         'heat' => ['HeatingActive', 'Heizbetrieb aktiv', 0, '~Switch', false],
         'online' => ['AirconOnline', 'Innengerät antwortet', 0, '~Switch', false],
         'control' => ['ExternalControl', 'Externe Regelung aktiv', 0, '~Switch', false],
-        'fan' => ['Fan', 'Lüfterstufe', 3, 'FAIKOUT.Fan', true],
+        'fan' => ['Fan', 'Lüfterstufe', 3, '', true],
         'fanrpm' => ['FanRPM', 'Lüfterdrehzahl (U/min)', 1, '', false],
         'fanfreq' => ['FanFrequency', 'Lüfterfrequenz (Rohwert)', 2, '', false],
         'comp' => ['CompressorRaw', 'Kompressor (Rohwert)', 2, '', false],
@@ -68,10 +68,33 @@ class FaikoutLocal extends IPSModule
         $this->RegisterAttributeBoolean('ExternalReferenceEnabled', false);
         $this->RegisterAttributeBoolean('ExternalReferencePending', false);
         $this->RegisterTimer('ExternalTemperatureTimer', 0, 'FAIKOUT_SendSensorValue($_IPS[\'TARGET\']);');
-        $this->RegisterVariableBoolean('Connected', 'Faikout MQTT verbunden', '~Switch', 0);
-        $this->RegisterVariableBoolean('ExternalReferenceEnabled', 'Externe Temperaturregelung freigegeben (Symcon)', '~Switch', 2);
+        $this->RegisterVariableBoolean(
+            'Connected',
+            'Faikout MQTT verbunden',
+            ['PRESENTATION' => VARIABLE_PRESENTATION_VALUE_PRESENTATION,
+                'OPTIONS' => json_encode([
+                    ['Value' => false, 'Caption' => 'Offline'],
+                    ['Value' => true, 'Caption' => 'Online'],
+                ])],
+            0
+        );
+        $this->RegisterVariableBoolean(
+            'ExternalReferenceEnabled',
+            'Externe Temperaturregelung freigegeben (Symcon)',
+            $this->PresentationFor('ExternalReferenceEnabled', ''),
+            2
+        );
         $this->EnableAction('ExternalReferenceEnabled');
-        $this->RegisterVariableBoolean('ExternalReferenceReady', 'Faikout-Einstellungen bestätigt', '~Switch', 3);
+        $this->RegisterVariableBoolean(
+            'ExternalReferenceReady',
+            'Faikout-Einstellungen bestätigt',
+            ['PRESENTATION' => VARIABLE_PRESENTATION_VALUE_PRESENTATION,
+                'OPTIONS' => json_encode([
+                    ['Value' => false, 'Caption' => 'Ausstehend'],
+                    ['Value' => true, 'Caption' => 'Bestätigt'],
+                ])],
+            3
+        );
         $this->RegisterVariableInteger('LastStatus', 'Letzter Status', '~UnixTimestamp', 1);
         $this->RegisterVariableString('RawStatus', 'Letzter Status JSON', '', 95);
         $this->RegisterVariableString('LastError', 'Letzter Fehler', '', 96);
@@ -97,48 +120,76 @@ class FaikoutLocal extends IPSModule
     }
 
     /**
-     * Create global module-owned profiles only once. The MQTT status still uses
-     * original Faikout strings, preserving existing Symcon variable IDs.
+     * Symcon >=8: new variable presentations are owned by the module.
+     * Never use IPS_SetVariableCustomPresentation here; user overrides take precedence.
+     * Preserve identifiers and variable types for existing archives/links.
      */
-    private function EnsureControlProfiles(): void
+    private function PresentationFor(string $ident, string $legacyProfile): array|string
     {
-        $modes = [
-            'A' => 'Automatik',
-            'H' => 'Heizen',
-            'C' => 'Kühlen',
-            'D' => 'Entfeuchten',
-            'F' => 'Lüften'
-        ];
-        $fans = [
-            'A' => 'Automatik',
-            'Q' => 'Leise / Nacht',
-            '1' => 'Stufe 1',
-            '2' => 'Stufe 2',
-            '3' => 'Stufe 3',
-            '4' => 'Stufe 4',
-            '5' => 'Stufe 5'
-        ];
-        foreach (['FAIKOUT.Mode' => $modes, 'FAIKOUT.Fan' => $fans] as $name => $options) {
-            if (IPS_VariableProfileExists($name)) {
-                continue;
-            }
-            IPS_CreateVariableProfile($name, VARIABLETYPE_STRING);
-            foreach ($options as $value => $caption) {
-                IPS_SetVariableProfileAssociation($name, (string)$value, $caption, '', -1);
-            }
+        if ($ident === 'Mode') {
+            $choices = [
+                ['Value' => 'A', 'Caption' => 'Automatik'],
+                ['Value' => 'H', 'Caption' => 'Heizen'],
+                ['Value' => 'C', 'Caption' => 'Kühlen'],
+                ['Value' => 'D', 'Caption' => 'Entfeuchten'],
+                ['Value' => 'F', 'Caption' => 'Lüften'],
+            ];
+            return [
+                'PRESENTATION' => VARIABLE_PRESENTATION_ENUMERATION,
+                'DISPLAY' => 0,
+                'LAYOUT' => 1,
+                'OPTIONS' => json_encode($choices, JSON_UNESCAPED_UNICODE),
+            ];
         }
-        if (!IPS_VariableProfileExists('FAIKOUT.TargetTemperature')) {
-            IPS_CreateVariableProfile('FAIKOUT.TargetTemperature', VARIABLETYPE_FLOAT);
-            IPS_SetVariableProfileText('FAIKOUT.TargetTemperature', '', ' °C');
-            IPS_SetVariableProfileDigits('FAIKOUT.TargetTemperature', 1);
-            IPS_SetVariableProfileValues('FAIKOUT.TargetTemperature', 10, 32, 0.5);
+        if ($ident === 'Fan') {
+            $choices = [
+                ['Value' => 'A', 'Caption' => 'Automatik'],
+                ['Value' => 'Q', 'Caption' => 'Leise / Nacht'],
+                ['Value' => '1', 'Caption' => 'Stufe 1'],
+                ['Value' => '2', 'Caption' => 'Stufe 2'],
+                ['Value' => '3', 'Caption' => 'Stufe 3'],
+                ['Value' => '4', 'Caption' => 'Stufe 4'],
+                ['Value' => '5', 'Caption' => 'Stufe 5'],
+            ];
+            return [
+                'PRESENTATION' => VARIABLE_PRESENTATION_ENUMERATION,
+                'DISPLAY' => 0,
+                'LAYOUT' => 1,
+                'OPTIONS' => json_encode($choices, JSON_UNESCAPED_UNICODE),
+            ];
         }
+        if ($ident === 'Temperature') {
+            return [
+                'PRESENTATION' => VARIABLE_PRESENTATION_SLIDER,
+                'MIN' => 10.0,
+                'MAX' => 32.0,
+                'STEP_SIZE' => 0.5,
+                'DIGITS' => 1,
+                'SUFFIX' => ' °C',
+                'USAGE_TYPE' => 0,
+            ];
+        }
+        if ($ident === 'Power' || $ident === 'ExternalReferenceEnabled') {
+            return ['PRESENTATION' => VARIABLE_PRESENTATION_SWITCH, 'USAGE_TYPE' => 0];
+        }
+        if (in_array($ident, [
+            'HomeTemperature', 'InletTemperature', 'OutdoorTemperature',
+            'LiquidTemperature', 'ExternalTemperature', 'AutoTarget',
+        ], true)) {
+            return [
+                'PRESENTATION' => VARIABLE_PRESENTATION_VALUE_PRESENTATION,
+                'USAGE_TYPE' => 1,
+                'DIGITS' => 1,
+                'SUFFIX' => ' °C',
+            ];
+        }
+        // Keep non-temperature telemetry untouched for now.
+        return $legacyProfile;
     }
 
     public function ApplyChanges()
     {
         parent::ApplyChanges();
-        $this->EnsureControlProfiles();
         $hostname = $this->ReadPropertyString('Hostname');
         // Update message subscription whenever the sensor selection changes.
         $previousSensorId = $this->ReadAttributeInteger('SubscribedSensorVariableID');
@@ -218,7 +269,7 @@ class FaikoutLocal extends IPSModule
                     ['type' => 'NumberSpinner', 'name' => 'PublishIntervalSeconds', 'caption' => 'Sendeintervall in Sekunden (mindestens 30)'],
                     ['type' => 'NumberSpinner', 'name' => 'SensorMaxAgeSeconds', 'caption' => 'Maximales Messwertalter in Sekunden'],
                     ['type' => 'CheckBox', 'name' => 'ImmediateUpdates', 'caption' => 'Bei relevanten Temperaturänderungen zusätzlich sofort senden'],
-                    ['type' => 'NumberSpinner', 'name' => 'ImmediateDeltaKelvin', 'caption' => 'Mindeständerung zur zuletzt gesendeten Temperatur (K, mindestens 0,1)'],
+                    ['type' => 'NumberSpinner', 'name' => 'ImmediateDeltaKelvin', 'caption' => 'Mindeständerung (K)', 'digits' => 1, 'minimum' => 0.1, 'suffix' => ' K'],
                     ['type' => 'NumberSpinner', 'name' => 'ImmediateMinIntervalSeconds', 'caption' => 'Mindestabstand zwischen Sofortmeldungen in Sekunden (mindestens 10)'],
                     ['type' => 'Label', 'caption' => 'Empfohlen: 0,2 K und 30 Sekunden. Zyklische Übertragung bleibt unabhängig aktiv (Standard 120 Sekunden).'],
                     ['type' => 'Label', 'caption' => 'Die Temperatur wird nur bei aktivierter Regelung zyklisch gesendet. Veraltete oder unplausible Werte werden verworfen.'],
@@ -318,7 +369,7 @@ class FaikoutLocal extends IPSModule
             if ($type === VARIABLETYPE_STRING && !is_scalar($value)) {
                 continue;
             }
-            $this->MaintainVariable($ident, $caption, $type, $profile, 20, true);
+            $this->MaintainVariable($ident, $caption, $type, $this->PresentationFor($ident, $profile), 20, true);
             if ($write) {
                 $this->EnableAction($ident);
             }
