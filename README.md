@@ -1,8 +1,12 @@
 # Faikout Local – IP-Symcon 9.0
 
-**Entwicklungsprototyp v0.1.0. Nicht für produktiven Heizbetrieb freigegeben.**
+**Entwicklungsprototyp v0.1.1. Nicht für produktiven Heizbetrieb freigegeben.**
 
 Eigenständiges Symcon-Modul zur lokalen Kommunikation mit Daikin-Faikout über den vorhandenen Symcon-MQTT-Server. Kein Fork des archivierten, nicht ausdrücklich lizenzierten Originalmoduls „Faikin 4 Daikin“. Neue Modul-IDs, keine automatische Migration des alten Moduls.
+
+## Diagnose in v0.1.1
+
+In der Geräteinstanz den Schalter **MQTT-Diagnoseausgaben im Debug-Fenster aktivieren** einschalten und anschließend **Übernehmen**. Im Instanz-Debug erscheinen dann `MQTT RX Topic`, `MQTT RX Payload`, `MQTT TX Topic`, `MQTT TX Payload`, Verbindungs-/Fehlermeldungen und Hinweise, wenn ein externer Homematic-Messwert nicht gesendet wird. Der Schalter ist standardmäßig aus; für eine einfache Kontrolle zunächst eine simulierte Statusnachricht über MQTT Explorer auf `state/wohnzimmer` senden. Danach Diagnose wieder deaktivieren, um unnötige Meldungen zu vermeiden.
 
 ## Funktionen
 - Drei Innengeräte möglich: eine Instanz je Gerät und strikte MQTT-Topic-Zuordnung nach Hostname.
