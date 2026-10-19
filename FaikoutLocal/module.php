@@ -76,6 +76,12 @@ class FaikoutLocal extends IPSModule
         'FirmwareVersion' => 90, 'RawStatus' => 95, 'LastError' => 96,
     ];
 
+    private const OUTDOOR_CAPTIONS = [
+        'OutdoorTemperature' => ['Außentemperatur', 'Außengerät · Außentemperatur'],
+        'CompressorRaw' => ['Kompressor (Rohwert)', 'Außengerät · Verdichter (Rohwert)'],
+        'EnergyWh' => ['Energiezähler Wh (Rohwert)', 'System · Energiezähler Wh (Rohwert)'],
+    ];
+
     /** Order all existing child variables immediately after a module update. */
     private function SortExistingVariables(): void
     {
@@ -88,6 +94,13 @@ class FaikoutLocal extends IPSModule
             $position = self::POSITIONS[$ident];
             if ((int) ($object['ObjectPosition'] ?? -1) !== $position) {
                 IPS_SetPosition($objectId, $position);
+            }
+            if (isset(self::OUTDOOR_CAPTIONS[$ident])) {
+                [$oldCaption, $newCaption] = self::OUTDOOR_CAPTIONS[$ident];
+                // Rename only the untouched legacy caption. Preserve custom user names.
+                if (IPS_GetName($objectId) === $oldCaption) {
+                    IPS_SetName($objectId, $newCaption);
+                }
             }
         }
     }
