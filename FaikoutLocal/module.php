@@ -76,6 +76,20 @@ class FaikoutLocal extends IPSModule
         'FirmwareVersion' => 90, 'RawStatus' => 95, 'LastError' => 96,
     ];
 
+    /**
+     * Native Symcon 9 icon identifiers (exactly as selected in its picker).
+     */
+    private const CONTROL_ICONS = [
+        'SwingVertical' => 'arrows-up-down',
+        'SwingHorizontal' => 'arrows-left-right',
+        'Mode' => 'heatpump',
+        'Temperature' => 'temperature-half',
+        'Fan' => 'gauge-low',
+        'Comfort' => 'wind',
+        'IntelligentEye' => 'person-running-fast',
+        'ExternalReferenceEnabled' => 'circle-check',
+    ];
+
     private const OUTDOOR_CAPTIONS = [
         'OutdoorTemperature' => ['Außentemperatur', 'Außengerät · Außentemperatur'],
         'CompressorRaw' => ['Kompressor (Rohwert)', 'Außengerät · Verdichter (Rohwert)'],
@@ -102,6 +116,31 @@ class FaikoutLocal extends IPSModule
                     IPS_SetName($objectId, $newCaption);
                 }
             }
+        }
+    }
+
+    /**
+     * Refresh module-provided icons on previously registered controls without
+     * creating any new device capabilities. User customizations take priority.
+     */
+    private function RefreshExistingControlPresentations(): void
+    {
+        $existing = [];
+        foreach (IPS_GetChildrenIDs($this->InstanceID) as $objectId) {
+            $ident = (string) (IPS_GetObject($objectId)['ObjectIdent'] ?? '');
+            if (isset(self::CONTROL_ICONS[$ident])) {
+                $existing[$ident] = true;
+            }
+        }
+        foreach (self::FIELDS as $field) {
+            [$ident, $caption, $type, $profile] = $field;
+            if (!isset($existing[$ident])) {
+                continue;
+            }
+            $this->MaintainVariable(
+                $ident, $caption, $type, $this->PresentationFor($ident, $profile),
+                self::POSITIONS[$ident], true
+            );
         }
     }
 
@@ -212,6 +251,7 @@ class FaikoutLocal extends IPSModule
             }, $choices);
             return [
                 'PRESENTATION' => VARIABLE_PRESENTATION_ENUMERATION,
+                'ICON' => self::CONTROL_ICONS[$ident],
                 'DISPLAY' => 0,
                 'LAYOUT' => 1,
                 'OPTIONS' => json_encode($choices, JSON_UNESCAPED_UNICODE),
@@ -237,6 +277,7 @@ class FaikoutLocal extends IPSModule
             }, $choices);
             return [
                 'PRESENTATION' => VARIABLE_PRESENTATION_ENUMERATION,
+                'ICON' => self::CONTROL_ICONS[$ident],
                 'DISPLAY' => 0,
                 'LAYOUT' => 1,
                 'OPTIONS' => json_encode($choices, JSON_UNESCAPED_UNICODE),
@@ -245,6 +286,7 @@ class FaikoutLocal extends IPSModule
         if ($ident === 'Temperature') {
             return [
                 'PRESENTATION' => VARIABLE_PRESENTATION_SLIDER,
+                'ICON' => self::CONTROL_ICONS[$ident],
                 'MIN' => 10.0,
                 'MAX' => 32.0,
                 'STEP_SIZE' => 0.5,
@@ -275,7 +317,14 @@ class FaikoutLocal extends IPSModule
             'Power', 'ExternalReferenceEnabled',
             'SwingVertical', 'SwingHorizontal', 'Comfort', 'IntelligentEye'
         ], true)) {
-            return ['PRESENTATION' => VARIABLE_PRESENTATION_SWITCH, 'USAGE_TYPE' => 0];
+            $presentation = ['PRESENTATION' => VARIABLE_PRESENTATION_SWITCH, 'USAGE_TYPE' => 0];
+            if (isset(self::CONTROL_ICONS[$ident])) {
+                // Switch presentations use ICON_TRUE even when one icon is
+                // shared by both switch positions.
+                $presentation['USE_ICON_FALSE'] = false;
+                $presentation['ICON_TRUE'] = self::CONTROL_ICONS[$ident];
+            }
+            return $presentation;
         }
         if (in_array($ident, [
             'HomeTemperature', 'InletTemperature', 'OutdoorTemperature',
@@ -301,6 +350,18 @@ class FaikoutLocal extends IPSModule
             $this->PresentationFor('LastStatus', ''), self::POSITIONS['LastStatus'], true
         );
         $this->SortExistingVariables();
+        $this->RefreshExistingControlPresentations();
+        // This local Symcon switch is not part of the Faikout status FIELDS.
+        // Reconfigure the already existing switch without replacing its value.
+        $this->MaintainVariable(
+            'ExternalReferenceEnabled',
+            'Externe Temperaturregelung freigegeben (Symcon)',
+            VARIABLETYPE_BOOLEAN,
+            $this->PresentationFor('ExternalReferenceEnabled', ''),
+            self::POSITIONS['ExternalReferenceEnabled'],
+            true
+        );
+        $this->EnableAction('ExternalReferenceEnabled');
         $hostname = $this->ReadPropertyString('Hostname');
         // Update message subscription whenever the sensor selection changes.
         $previousSensorId = $this->ReadAttributeInteger('SubscribedSensorVariableID');
