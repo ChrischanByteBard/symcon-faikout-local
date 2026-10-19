@@ -1,8 +1,30 @@
 # Faikout Local – Symcon 9.0
 
-**Entwicklungsprototyp v0.2.0. Nicht für produktiven Heizbetrieb freigegeben.**
+**Entwicklungsprototyp v0.3.0. Nicht für produktiven Heizbetrieb freigegeben.**
 
 Eigenständige MQTT-Integration für die lokale Steuerung kompatibler Daikin-Faikout-Geräte über den integrierten Symcon-MQTT-Server. Kein Fork des archivierten Moduls *Faikin 4 Daikin*. Eigene Modul-IDs.
+
+## Ereignisgesteuerte Temperaturübertragung (v0.3.0)
+
+- Standardmäßig ab dieser Version eingeschaltet, solange die **externe Regelung selbst aktiv** und von Faikout bestätigt ist.
+- Das Modul abonniert die ausgewählte Temperaturvariable per Symcon `RegisterMessage(..., VM_UPDATE)` und verarbeitet Aktualisierungen über `MessageSink()`.
+- Eine zusätzliche Nachricht wird verschickt, wenn sich der Wert gegenüber der letzten **erfolgreich gesendeten** Temperatur um mindestens **0,2 K** geändert hat. Ein Mindestabstand von **30 s** schützt vor Nachrichtenspitzen. Beides ist in der Instanz einstellbar.
+- Weiterhin wird alle **120 s** die gültige Temperatur gesendet – auch ohne Änderung (Faikout-Timeout-Absicherung).
+- Die Übertragung bleibt gesperrt, wenn die externe Regelung deaktiviert ist oder die sicheren Faikout-Einstellungen nicht bestätigt sind.
+- Bei Wechsel der ausgewählten Sensorvariable wird die alte Symcon-Nachrichtenregistrierung entfernt und die neue registriert.
+- Diese Änderung betrifft nur die Weitergabe des Messwerts, **nicht** die interne Inverterregelung der Daikin.
+
+## Bedienprofile (v0.3.0)
+
+Die vorhandenen String-Variablen behalten ihre IDs und ihre Faikout-Rohwerte, erhalten aber ein Auswahlprofil in Symcon:
+
+- **Betriebsart:** Automatik (`A`), Heizen (`H`), Kühlen (`C`), Entfeuchten (`D`), Lüften (`F`).
+- **Lüfterstufe:** Automatik (`A`), Leise/Nacht (`Q`), Stufe 1–5 (`1`–`5`).
+- **Solltemperatur:** Wertebereich 10–32 °C, Schrittweite 0,5 °C, eine Nachkommastelle. Es handelt sich um die Daikin-Geräte-Solltemperatur, **nicht** den extern gewünschten Raumsollwert.
+
+In der Visualisierung oder direkt im Objektbaum auf diese Variablen zugreifen. Symcon `RequestAction` ruft das Modul auf; es sendet die entsprechenden Codes über `command/<hostname>/control`. Der angezeigte tatsächliche Zustand wird erst aus einer Daikin/Faikout-MQTT-Statusrückmeldung aktualisiert (keine optimistische Statusübernahme).
+
+Profile: `FAIKOUT.Mode`, `FAIKOUT.Fan`, `FAIKOUT.TargetTemperature`.
 
 ## Funktionen
 - Separate Instanz je Daikin-Innengerät; exakte MQTT-Topic-Zuordnung nach Hostname.
@@ -48,7 +70,7 @@ Eigenständige MQTT-Integration für die lokale Steuerung kompatibler Daikin-Fai
 ## Einschränkungen
 - Noch nicht mit realem Faikout oder unter belastetem Symcon 9 getestet.
 - Statuswerte `Wh` und `comp` werden als Rohwerte übernommen. Bei Multi-Split nicht einfach summieren.
-- Bedienprofile für Betriebsart/Lüfter fehlen noch.
+- Die tatsächliche Geräteakzeptanz der Profilbefehle muss mit echter Faikout-Hardware überprüft werden.
 - MQTT-Will wird erkannt, aber ein eigener Offline-Timeout fehlt noch.
 - Faikout behält seine internen Schutzfunktionen; die parallele Daikin-ONECTA-Schnittstelle wird nicht verändert.
 

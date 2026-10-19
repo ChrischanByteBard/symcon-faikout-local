@@ -12,8 +12,8 @@ class FaikoutLocal extends IPSModule
 
     private const FIELDS = [
         'power' => ['Power', 'Eingeschaltet', 0, '~Switch', true],
-        'mode' => ['Mode', 'Betriebsart (Rohwert)', 3, '', true],
-        'temp' => ['Temperature', 'Solltemperatur', 2, '~Temperature', true],
+        'mode' => ['Mode', 'Betriebsart', 3, 'FAIKOUT.Mode', true],
+        'temp' => ['Temperature', 'Solltemperatur', 2, 'FAIKOUT.TargetTemperature', true],
         'home' => ['HomeTemperature', 'Raumtemperatur Daikin', 2, '~Temperature', false],
         'inlet' => ['InletTemperature', 'Ansaugtemperatur', 2, '~Temperature', false],
         'outside' => ['OutdoorTemperature', 'Außentemperatur', 2, '~Temperature', false],
@@ -22,7 +22,7 @@ class FaikoutLocal extends IPSModule
         'heat' => ['HeatingActive', 'Heizbetrieb aktiv', 0, '~Switch', false],
         'online' => ['AirconOnline', 'Innengerät antwortet', 0, '~Switch', false],
         'control' => ['ExternalControl', 'Externe Regelung aktiv', 0, '~Switch', false],
-        'fan' => ['Fan', 'Lüfterstufe (Rohwert)', 3, '', true],
+        'fan' => ['Fan', 'Lüfterstufe', 3, 'FAIKOUT.Fan', true],
         'fanrpm' => ['FanRPM', 'Lüfterdrehzahl (U/min)', 1, '', false],
         'fanfreq' => ['FanFrequency', 'Lüfterfrequenz (Rohwert)', 2, '', false],
         'comp' => ['CompressorRaw', 'Kompressor (Rohwert)', 2, '', false],
@@ -57,6 +57,12 @@ class FaikoutLocal extends IPSModule
         $this->RegisterPropertyInteger('SensorVariableID', 0);
         $this->RegisterPropertyInteger('PublishIntervalSeconds', 120);
         $this->RegisterPropertyInteger('SensorMaxAgeSeconds', 1800);
+        $this->RegisterPropertyBoolean('ImmediateUpdates', true);
+        $this->RegisterPropertyFloat('ImmediateDeltaKelvin', 0.2);
+        $this->RegisterPropertyInteger('ImmediateMinIntervalSeconds', 30);
+        $this->RegisterAttributeInteger('SubscribedSensorVariableID', 0);
+        $this->RegisterAttributeFloat('LastPublishedSensorValue', -999.0);
+        $this->RegisterAttributeInteger('LastPublishedSensorAt', 0);
         $this->RegisterPropertyBoolean('DebugLogging', false);
         // Safe-by-default: never start remote temperature control until explicitly enabled.
         $this->RegisterAttributeBoolean('ExternalReferenceEnabled', false);
@@ -90,10 +96,64 @@ class FaikoutLocal extends IPSModule
         $this->SendDebug($event, $message, 0);
     }
 
+    /**
+     * Create global module-owned profiles only once. The MQTT status still uses
+     * original Faikout strings, preserving existing Symcon variable IDs.
+     */
+    private function EnsureControlProfiles(): void
+    {
+        $modes = [
+            'A' => 'Automatik',
+            'H' => 'Heizen',
+            'C' => 'Kühlen',
+            'D' => 'Entfeuchten',
+            'F' => 'Lüften'
+        ];
+        $fans = [
+            'A' => 'Automatik',
+            'Q' => 'Leise / Nacht',
+            '1' => 'Stufe 1',
+            '2' => 'Stufe 2',
+            '3' => 'Stufe 3',
+            '4' => 'Stufe 4',
+            '5' => 'Stufe 5'
+        ];
+        foreach (['FAIKOUT.Mode' => $modes, 'FAIKOUT.Fan' => $fans] as $name => $options) {
+            if (IPS_VariableProfileExists($name)) {
+                continue;
+            }
+            IPS_CreateVariableProfile($name, VARIABLETYPE_STRING);
+            foreach ($options as $value => $caption) {
+                IPS_SetVariableProfileAssociation($name, (string)$value, $caption, '', -1);
+            }
+        }
+        if (!IPS_VariableProfileExists('FAIKOUT.TargetTemperature')) {
+            IPS_CreateVariableProfile('FAIKOUT.TargetTemperature', VARIABLETYPE_FLOAT);
+            IPS_SetVariableProfileText('FAIKOUT.TargetTemperature', '', ' °C');
+            IPS_SetVariableProfileDigits('FAIKOUT.TargetTemperature', 1);
+            IPS_SetVariableProfileValues('FAIKOUT.TargetTemperature', 10, 32, 0.5);
+        }
+    }
+
     public function ApplyChanges()
     {
         parent::ApplyChanges();
+        $this->EnsureControlProfiles();
         $hostname = $this->ReadPropertyString('Hostname');
+        // Update message subscription whenever the sensor selection changes.
+        $previousSensorId = $this->ReadAttributeInteger('SubscribedSensorVariableID');
+        $sensorId = $this->ReadPropertyInteger('SensorVariableID');
+        if ($previousSensorId > 0 && $previousSensorId !== $sensorId) {
+            $this->UnregisterMessage($previousSensorId, VM_UPDATE);
+        }
+        if ($sensorId > 0 && IPS_VariableExists($sensorId)) {
+            $this->RegisterMessage($sensorId, VM_UPDATE);
+        }
+        if ($previousSensorId !== $sensorId) {
+            $this->WriteAttributeFloat('LastPublishedSensorValue', -999.0);
+            $this->WriteAttributeInteger('LastPublishedSensorAt', 0);
+        }
+        $this->WriteAttributeInteger('SubscribedSensorVariableID', $sensorId);
         // Device response is required after each module reload.
         $this->WriteAttributeBoolean('ExternalReferencePending', false);
         $this->SetValue('ExternalReferenceReady', false);
@@ -109,6 +169,42 @@ class FaikoutLocal extends IPSModule
         // Timer is armed only after Faikout confirms remote settings.
     }
 
+    /**
+     * Receive only updates from the selected room sensor. Periodic publishing
+     * remains independent from this event-driven fast path.
+     */
+    public function MessageSink($TimeStamp, $SenderID, $Message, $Data)
+    {
+        if ($Message !== VM_UPDATE ||
+            $SenderID !== $this->ReadPropertyInteger('SensorVariableID') ||
+            !$this->ReadPropertyBoolean('ImmediateUpdates') ||
+            !$this->ReadAttributeBoolean('ExternalReferenceEnabled') ||
+            !$this->GetValue('ExternalReferenceReady')) {
+            return;
+        }
+        $id = $this->ReadPropertyInteger('SensorVariableID');
+        if ($id <= 0 || !IPS_VariableExists($id)) {
+            return;
+        }
+        $value = GetValue($id);
+        if (!is_numeric($value) || !is_finite((float) $value)) {
+            return;
+        }
+        // The delta is compared to the last value actually sent via MQTT.
+        $previous = $this->ReadAttributeFloat('LastPublishedSensorValue');
+        $threshold = max(0.1, $this->ReadPropertyFloat('ImmediateDeltaKelvin'));
+        if ($previous !== -999.0 && abs((float)$value - $previous) + 0.000001 < $threshold) {
+            return;
+        }
+        $lastSent = $this->ReadAttributeInteger('LastPublishedSensorAt');
+        $minSeconds = max(10, $this->ReadPropertyInteger('ImmediateMinIntervalSeconds'));
+        if ($lastSent > 0 && time() - $lastSent < $minSeconds) {
+            return;
+        }
+        $this->Trace('Temperature event', 'Relevant room-temperature update: ' . (string)$value);
+        $this->SendSensorValue();
+    }
+
     public function GetConfigurationForm()
     {
         return json_encode([
@@ -121,6 +217,10 @@ class FaikoutLocal extends IPSModule
                     ['type' => 'Label', 'caption' => 'Beliebige numerische Temperaturvariable in °C, z. B. Homematic, KNX, Zigbee, Shelly oder Modbus.'],
                     ['type' => 'NumberSpinner', 'name' => 'PublishIntervalSeconds', 'caption' => 'Sendeintervall in Sekunden (mindestens 30)'],
                     ['type' => 'NumberSpinner', 'name' => 'SensorMaxAgeSeconds', 'caption' => 'Maximales Messwertalter in Sekunden'],
+                    ['type' => 'CheckBox', 'name' => 'ImmediateUpdates', 'caption' => 'Bei relevanten Temperaturänderungen zusätzlich sofort senden'],
+                    ['type' => 'NumberSpinner', 'name' => 'ImmediateDeltaKelvin', 'caption' => 'Mindeständerung zur zuletzt gesendeten Temperatur (K, mindestens 0,1)'],
+                    ['type' => 'NumberSpinner', 'name' => 'ImmediateMinIntervalSeconds', 'caption' => 'Mindestabstand zwischen Sofortmeldungen in Sekunden (mindestens 10)'],
+                    ['type' => 'Label', 'caption' => 'Empfohlen: 0,2 K und 30 Sekunden. Zyklische Übertragung bleibt unabhängig aktiv (Standard 120 Sekunden).'],
                     ['type' => 'Label', 'caption' => 'Die Temperatur wird nur bei aktivierter Regelung zyklisch gesendet. Veraltete oder unplausible Werte werden verworfen.'],
                     ['type' => 'Label', 'caption' => 'Freigabe über die Schaltvariable "Externe Temperaturregelung freigegeben (Symcon)" im Objektbaum.'],
                 ]],
@@ -430,7 +530,13 @@ class FaikoutLocal extends IPSModule
             $this->Trace('Temperature skip', 'Sensor value is invalid or outside 5-40 C');
             return false;
         }
-        return $this->SetExternalTemperature((float) $value);
+        $rounded = round((float) $value, 1);
+        if (!$this->SetExternalTemperature($rounded)) {
+            return false;
+        }
+        $this->WriteAttributeFloat('LastPublishedSensorValue', $rounded);
+        $this->WriteAttributeInteger('LastPublishedSensorAt', time());
+        return true;
     }
 
     public function RequestStatus(): bool
