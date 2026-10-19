@@ -95,13 +95,10 @@ class FaikoutLocal extends IPSModule
                 ])],
             3
         );
-        $this->RegisterVariableInteger('LastStatus', 'Letzter Status', [
-            'PRESENTATION' => VARIABLE_PRESENTATION_DATE_TIME,
-            'DATE' => 1,
-            'MONTH_TEXT' => false,
-            'DAY_OF_THE_WEEK' => false,
-            'TIME' => 2,
-        ], 1);
+        $this->RegisterVariableInteger(
+            'LastStatus', 'Letzter Status',
+            $this->PresentationFor('LastStatus', ''), 1
+        );
         $this->RegisterVariableString('RawStatus', 'Letzter Status JSON', '', 95);
         $this->RegisterVariableString('LastError', 'Letzter Fehler', '', 96);
     }
@@ -132,6 +129,15 @@ class FaikoutLocal extends IPSModule
      */
     private function PresentationFor(string $ident, string $legacyProfile): array|string
     {
+        if ($ident === 'LastStatus') {
+            return [
+                'PRESENTATION' => VARIABLE_PRESENTATION_DATE_TIME,
+                'DATE' => 1,
+                'MONTH_TEXT' => false,
+                'DAY_OF_THE_WEEK' => false,
+                'TIME' => 2,
+            ];
+        }
         if ($ident === 'Mode') {
             $choices = [
                 ['Value' => 'A', 'Caption' => 'Automatik'],
@@ -230,6 +236,11 @@ class FaikoutLocal extends IPSModule
     public function ApplyChanges()
     {
         parent::ApplyChanges();
+        // Also update existing installations; Create() may not run on module updates.
+        $this->MaintainVariable(
+            'LastStatus', 'Letzter Status', VARIABLETYPE_INTEGER,
+            $this->PresentationFor('LastStatus', ''), 1, true
+        );
         $hostname = $this->ReadPropertyString('Hostname');
         // Update message subscription whenever the sensor selection changes.
         $previousSensorId = $this->ReadAttributeInteger('SubscribedSensorVariableID');
