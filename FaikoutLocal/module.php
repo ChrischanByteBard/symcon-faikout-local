@@ -27,8 +27,10 @@ class FaikoutLocal extends IPSModule
         'fanfreq' => ['FanFrequency', 'Lüfterfrequenz (Rohwert)', 2, '', false],
         'comp' => ['CompressorRaw', 'Kompressor (Rohwert)', 2, '', false],
         'Wh' => ['EnergyWh', 'Energiezähler Wh (Rohwert)', 2, '', false],
-        'swingv' => ['SwingVertical', 'Lamellen vertikal', 0, '~Switch', true],
-        'swingh' => ['SwingHorizontal', 'Lamellen horizontal', 0, '~Switch', true],
+        'swingv' => ['SwingVertical', 'Vertikaler Schwenkbetrieb (auf/ab)', 0, '', true],
+        'swingh' => ['SwingHorizontal', 'Horizontaler Schwenkbetrieb (links/rechts)', 0, '', true],
+        'comfort' => ['Comfort', 'Komfort-Luftstrom (geräteabhängig)', 0, '', true],
+        'sensor' => ['IntelligentEye', 'Bewegungssensor-Funktion (experimentell)', 0, '', true],
         'powerful' => ['Powerful', 'Powerful', 0, '~Switch', true],
         'econo' => ['Econo', 'Econo', 0, '~Switch', true],
         'streamer' => ['Streamer', 'Streamer', 0, '~Switch', true],
@@ -215,7 +217,10 @@ class FaikoutLocal extends IPSModule
                 ], JSON_UNESCAPED_UNICODE),
             ];
         }
-        if ($ident === 'Power' || $ident === 'ExternalReferenceEnabled') {
+        if (in_array($ident, [
+            'Power', 'ExternalReferenceEnabled',
+            'SwingVertical', 'SwingHorizontal', 'Comfort', 'IntelligentEye'
+        ], true)) {
             return ['PRESENTATION' => VARIABLE_PRESENTATION_SWITCH, 'USAGE_TYPE' => 0];
         }
         if (in_array($ident, [
@@ -474,12 +479,16 @@ class FaikoutLocal extends IPSModule
         $keys = [
             'Power' => 'power', 'Mode' => 'mode', 'Temperature' => 'temp',
             'Fan' => 'fan', 'SwingVertical' => 'swingv', 'SwingHorizontal' => 'swingh',
+            'Comfort' => 'comfort', 'IntelligentEye' => 'sensor',
             'Powerful' => 'powerful', 'Econo' => 'econo', 'Streamer' => 'streamer',
         ];
         if (!array_key_exists($Ident, $keys)) {
             throw new InvalidArgumentException('Unsupported action: ' . $Ident);
         }
-        if (in_array($Ident, ['Power','SwingVertical','SwingHorizontal','Powerful','Econo','Streamer'], true)) {
+        if (in_array($Ident, [
+            'Power', 'SwingVertical', 'SwingHorizontal', 'Comfort', 'IntelligentEye',
+            'Powerful', 'Econo', 'Streamer'
+        ], true)) {
             if (!is_bool($Value)) {
                 throw new InvalidArgumentException('Boolean expected');
             }
