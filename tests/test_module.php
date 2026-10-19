@@ -16,8 +16,21 @@ function IPS_VariableExists($id) { return isset($GLOBALS['sensor'][$id]); }
 function IPS_GetVariable($id) { return ['VariableUpdated' => $GLOBALS['sensor'][$id]['updated']]; }
 function GetValue($id) { return $GLOBALS['sensor'][$id]['value']; }
 
+// Mock existing Symcon object tree, including two legacy positions and a user-owned variable.
+$GLOBALS['mockObjects'] = [
+    501 => ['ObjectIdent' => 'SwingVertical', 'ObjectPosition' => 20],
+    502 => ['ObjectIdent' => 'SwingHorizontal', 'ObjectPosition' => 20],
+    503 => ['ObjectIdent' => 'CompressorRaw', 'ObjectPosition' => 20],
+    504 => ['ObjectIdent' => 'UserVariable', 'ObjectPosition' => 777],
+];
+$GLOBALS['mockChildren'] = [41675 => [501,502,503,504], 41676 => []];
+function IPS_GetChildrenIDs($parent) { return $GLOBALS['mockChildren'][$parent] ?? []; }
+function IPS_GetObject($id) { return $GLOBALS['mockObjects'][$id]; }
+function IPS_SetPosition($id, $position) { $GLOBALS['mockObjects'][$id]['ObjectPosition'] = $position; return true; }
+
 class IPSModule
 {
+    public int $InstanceID = 41675;
     public array $properties = [], $attributes = [], $values = [], $timers = [], $sent = [], $debug = [], $subscriptions = [], $variables = [];
     public function Create() {}
     public function ApplyChanges() {}
@@ -46,14 +59,14 @@ class IPSModule
     public function UnregisterMessage($id, $msg) { unset($this->subscriptions[$id][$msg]); }
     public function RegisterVariableBoolean($n, $c, $p, $i) {
         $this->values[$n] = false;
-        $this->variables[$n] = ['caption'=>$c,'type'=>VARIABLETYPE_BOOLEAN,'profile'=>$p];
+        $this->variables[$n] = ['caption'=>$c,'type'=>VARIABLETYPE_BOOLEAN,'profile'=>$p,'position'=>$i];
     }
     public function RegisterVariableInteger($n, $c, $p, $i) {
         $this->values[$n] = 0;
-        $this->variables[$n] = ['caption'=>$c,'type'=>VARIABLETYPE_INTEGER,'profile'=>$p];
+        $this->variables[$n] = ['caption'=>$c,'type'=>VARIABLETYPE_INTEGER,'profile'=>$p,'position'=>$i];
     }
-    public function RegisterVariableString($n, $c, $p, $i) { $this->values[$n] = ''; }
-    public function MaintainVariable($n, $c, $t, $p, $i, $m) {$this->variables[$n] = ['caption'=>$c, 'type'=>$t, 'profile'=>$p];}
+    public function RegisterVariableString($n, $c, $p, $i) { $this->values[$n] = ''; $this->variables[$n] = ['caption'=>$c,'type'=>VARIABLETYPE_STRING,'profile'=>$p,'position'=>$i]; }
+    public function MaintainVariable($n, $c, $t, $p, $i, $m) {$this->variables[$n] = ['caption'=>$c, 'type'=>$t, 'profile'=>$p, 'position'=>$i];}
     public function EnableAction($n) {}
     public function SetValue($n, $v) { $this->values[$n] = $v; }
     public function GetValue($n) { return $this->values[$n] ?? null; }
@@ -75,11 +88,22 @@ $a->properties['DebugLogging'] = true;
 $a->ApplyChanges();
 
 $b = new FaikoutLocal();
+$b->InstanceID = 41676;
 $b->Create();
 $b->properties['Hostname'] = 'kueche';
 $b->ApplyChanges();
 
 check($a->timers['ExternalTemperatureTimer'] === 0, 'external reference disabled by default');
+check($GLOBALS['mockObjects'][501]['ObjectPosition'] === 20 &&
+      $GLOBALS['mockObjects'][502]['ObjectPosition'] === 21 &&
+      $GLOBALS['mockObjects'][503]['ObjectPosition'] === 61,
+      'existing swing and compressor variables sorted immediately during upgrade');
+check($GLOBALS['mockObjects'][504]['ObjectPosition'] === 777,
+      'unknown user-owned objects are not moved');
+check($a->variables['Connected']['position'] === 0 &&
+      $a->variables['LastStatus']['position'] === 2 &&
+      $a->variables['ExternalReferenceEnabled']['position'] === 3,
+      'registered status variables use fixed positions');
 check($a->variables['LastStatus']['profile']['PRESENTATION'] === VARIABLE_PRESENTATION_DATE_TIME &&
       $a->variables['LastStatus']['profile']['DATE'] === 1 &&
       $a->variables['LastStatus']['profile']['TIME'] === 2, 'last status uses native date/time with seconds');
@@ -104,6 +128,9 @@ $a->ReceiveData(packet('state/kueche', '{"temp":19}'));
 check(!isset($a->values['Temperature']), 'foreign room ignored');
 $a->ReceiveData(packet('state/wohnzimmer', '{"online":true,"power":true,"temp":22,"home":21.1,"inlet":23.2,"Wh":1240,"mode":"H"}'));
 check($a->values['Temperature'] === 22.0 && $a->values['InletTemperature'] === 23.2, 'status parsed');
+check($a->variables['EnergyWh']['position'] === 62 &&
+      $a->variables['EnergyWh']['caption'] === 'System · Energiezähler Wh (Rohwert)',
+      'energy meter clearly identified as system reading');
 $modePresentation = $a->variables['Mode']['profile'];
 check($modePresentation['PRESENTATION'] === VARIABLE_PRESENTATION_ENUMERATION, 'native enumeration for mode');
 $modeOptions = json_decode($modePresentation['OPTIONS'], true);
@@ -144,6 +171,11 @@ foreach ([
           $a->variables[$ident]['profile']['PRESENTATION'] === VARIABLE_PRESENTATION_SWITCH,
           'native controllable switch and MQTT status for ' . $ident);
 }
+check($a->variables['SwingVertical']['position'] === 20 &&
+      $a->variables['SwingHorizontal']['position'] === 21 &&
+      $a->variables['Comfort']['position'] === 22 &&
+      $a->variables['IntelligentEye']['position'] === 23,
+      'related airflow controls appear in adjacent positions');
 check(!isset($b->variables['Comfort']) && !isset($b->variables['IntelligentEye']),
       'other devices keep their own optional capabilities');
 check(count($fanOptions) === 7 && count(array_filter($fanOptions, function ($option) {
@@ -159,6 +191,15 @@ foreach (['Connected','ExternalReferenceReady'] as $identifier) {
             !array_key_exists('ColorValue', $option);
     })) === 0, 'status presentation ' . $identifier . ' has required keys');
 }
+
+// Outdoor values are only in the simulation when explicitly provided.
+$a->ReceiveData(packet('state/wohnzimmer', '{"outside":7.2,"comp":48}'));
+check($a->variables['OutdoorTemperature']['position'] === 60 &&
+      $a->variables['CompressorRaw']['position'] === 61,
+      'outdoor temperature and compressor grouped together');
+check(str_starts_with($a->variables['OutdoorTemperature']['caption'], 'Außengerät') &&
+      str_starts_with($a->variables['CompressorRaw']['caption'], 'Außengerät'),
+      'outdoor measurements clearly labelled');
 check($a->values['Connected'] === true && $a->values['AirconOnline'] === true, 'online status');
 $airconStatus = $a->variables['AirconOnline'];
 check($airconStatus['type'] === VARIABLETYPE_BOOLEAN &&
@@ -171,7 +212,7 @@ check(count($airconOptions) === 2 &&
       in_array(['Value'=>true,'Caption'=>'Antwortet','IconActive'=>false,
                 'IconValue'=>'','ColorActive'=>false,'ColorValue'=>-1], $airconOptions, true),
       'aircon response options are complete and labelled');
-check(count(array_filter($a->debug, fn($x) => $x[0] === 'MQTT RX Topic')) === 3, 'received status, fan, and airflow updates appear in debug');
+check(count(array_filter($a->debug, fn($x) => $x[0] === 'MQTT RX Topic')) === 4, 'received status, fan, airflow and outdoor updates appear in debug');
 check(count($b->debug) === 0, 'debug disabled by default');
 $a->ReceiveData(packet('state/wohnzimmer', 'false'));
 check($a->values['Connected'] === false, 'MQTT last will');
