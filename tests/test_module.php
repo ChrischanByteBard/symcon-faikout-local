@@ -34,6 +34,7 @@ class IPSModule
     public function MaintainVariable($n, $c, $t, $p, $i, $m) {}
     public function EnableAction($n) {}
     public function SetValue($n, $v) { $this->values[$n] = $v; }
+    public function GetValue($n) { return $this->values[$n] ?? null; }
     public function SendDataToParent($j) { $this->sent[] = json_decode($j, true); return 'ok'; }
     public function SendDebug($e, $m, $l) { $this->debug[] = [$e, $m, $l]; }
 }
@@ -77,17 +78,23 @@ check($a->values['Connected'] === false, 'MQTT last will');
 $a->ReceiveData(packet('state/wohnzimmer', '{"home":[18,19,20]}'));
 check($a->values['HomeTemperature'] === 21.1, 'unsupported arrays ignored');
 
+$a->ReceiveData(packet('state/wohnzimmer', '{"online":true,"power":true}'));
 $a->RequestAction('ExternalReferenceEnabled', true);
 check($a->values['ExternalReferenceEnabled'] === true && $a->attributes['ExternalReferenceEnabled'] === true, 'enable switch stored');
-check($a->timers['ExternalTemperatureTimer'] === 120000, 'timer active when enabled');
+check($a->timers['ExternalTemperatureTimer'] === 0, 'timer waits for remote acknowledgement');
+check($a->values['ExternalReferenceReady'] === false, 'remote not yet confirmed');
 check($a->sent[0]['Topic'] === 'setting/wohnzimmer', 'faikout settings topic');
 check(json_decode($a->sent[0]['Payload'], true) === ['autop'=>false,'autoptemp'=>0,'tempadjust'=>true], 'safe temperature adjustment settings');
 check($a->sent[0]['Retain'] === false, 'settings sent without retain');
-check($a->sent[1]['Topic'] === 'command/wohnzimmer/control' && $a->sent[1]['Payload'] === '{"env":21.3}', 'external sensor published on activation');
+check($a->sent[1]['Topic'] === 'setting/wohnzimmer' && $a->sent[1]['Payload'] === '', 'request remote settings');
+check(count($a->sent) === 2, 'no external temperature before acknowledgement');
 check(count(array_filter($a->debug, fn($x) => $x[0] === 'MQTT TX Topic')) >= 2, 'transmit debug');
 
 $a->ReceiveData(packet('setting/wohnzimmer', '{"tempadjust":true,"autop":false,"autoptemp":0,"tcontrol":600}'));
 check($a->values['TempAdjust'] === true && $a->values['ControlTimeout'] === 600, 'remote setting feedback available');
+check($a->values['ExternalReferenceReady'] === true, 'external reference confirmed');
+check($a->timers['ExternalTemperatureTimer'] === 120000, 'timer starts after acknowledgement');
+check($a->sent[2]['Topic'] === 'command/wohnzimmer/control' && $a->sent[2]['Payload'] === '{"env":21.3}', 'external sensor published after acknowledgement');
 
 $GLOBALS['sensor'][12345]['updated'] = time() - 3600;
 $before = count($a->sent);
@@ -100,4 +107,7 @@ check($a->values['ExternalReferenceEnabled'] === false, 'disabled switch reflect
 check(lastPacket($a)['Topic'] === 'setting/wohnzimmer' && json_decode(lastPacket($a)['Payload'], true)['tempadjust'] === false, 'disable also informs Faikout');
 check(!$a->SendSensorValue(), 'disabled prevents manual cyclic send');
 check(!$a->SetExternalTemperature(99), 'implausible temperature rejected');
+$a->ReceiveData(packet('state/wohnzimmer', 'false'));
+check($a->values['ExternalReferenceReady'] === false &&
+      $a->timers['ExternalTemperatureTimer'] === 0, 'MQTT disconnect disarms sensor forwarding');
 echo "All tests passed\n";
