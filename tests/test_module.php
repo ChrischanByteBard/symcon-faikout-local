@@ -100,8 +100,12 @@ check($a->values['Temperature'] === 22.0 && $a->values['InletTemperature'] === 2
 $modePresentation = $a->variables['Mode']['profile'];
 check($modePresentation['PRESENTATION'] === VARIABLE_PRESENTATION_ENUMERATION, 'native enumeration for mode');
 $modeOptions = json_decode($modePresentation['OPTIONS'], true);
-check(in_array(['Value'=>'H','Caption'=>'Heizen'], $modeOptions, true) &&
-      in_array(['Value'=>'C','Caption'=>'Kühlen'], $modeOptions, true), 'native mode choices preserved');
+check(in_array(['Value'=>'H','Caption'=>'Heizen','IconActive'=>false,'IconValue'=>'','Color'=>-1], $modeOptions, true) &&
+      in_array(['Value'=>'C','Caption'=>'Kühlen','IconActive'=>false,'IconValue'=>'','Color'=>-1], $modeOptions, true), 'native mode choices preserved');
+check(count($modeOptions) === 5 && count(array_filter($modeOptions, function ($option) {
+    return !array_key_exists('IconActive', $option) ||
+        !array_key_exists('IconValue', $option) || !array_key_exists('Color', $option);
+})) === 0, 'all mode options have mandatory enumeration keys');
 $tempPresentation = $a->variables['Temperature']['profile'];
 check($tempPresentation['PRESENTATION'] === VARIABLE_PRESENTATION_SLIDER &&
       $tempPresentation['MIN'] === 10.0 && $tempPresentation['MAX'] === 32.0 &&
@@ -115,8 +119,21 @@ $a->ReceiveData(packet('state/wohnzimmer', '{"fan":"Q"}'));
 $fanPresentation = $a->variables['Fan']['profile'];
 $fanOptions = json_decode($fanPresentation['OPTIONS'], true);
 check($fanPresentation['PRESENTATION'] === VARIABLE_PRESENTATION_ENUMERATION &&
-      in_array(['Value'=>'Q','Caption'=>'Leise / Nacht'], $fanOptions, true) &&
+      in_array(['Value'=>'Q','Caption'=>'Leise / Nacht','IconActive'=>false,'IconValue'=>'','Color'=>-1], $fanOptions, true) &&
       $a->values['Fan'] === 'Q', 'native fan choices preserve actual Faikout codes');
+check(count($fanOptions) === 7 && count(array_filter($fanOptions, function ($option) {
+    return !array_key_exists('IconActive', $option) ||
+        !array_key_exists('IconValue', $option) || !array_key_exists('Color', $option);
+})) === 0, 'all fan options have mandatory enumeration keys');
+foreach (['Connected','ExternalReferenceReady'] as $identifier) {
+    $values = json_decode($a->variables[$identifier]['profile']['OPTIONS'], true);
+    check(count($values) === 2 && count(array_filter($values, function ($option) {
+        return !array_key_exists('IconActive', $option) ||
+            !array_key_exists('IconValue', $option) ||
+            !array_key_exists('ColorActive', $option) ||
+            !array_key_exists('ColorValue', $option);
+    })) === 0, 'status presentation ' . $identifier . ' has required keys');
+}
 check($a->values['Connected'] === true && $a->values['AirconOnline'] === true, 'online status');
 check(count(array_filter($a->debug, fn($x) => $x[0] === 'MQTT RX Topic')) === 2, 'received status and fan updates appear in debug');
 check(count($b->debug) === 0, 'debug disabled by default');
