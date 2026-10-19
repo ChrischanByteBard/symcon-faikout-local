@@ -128,6 +128,24 @@ $fanOptions = json_decode($fanPresentation['OPTIONS'], true);
 check($fanPresentation['PRESENTATION'] === VARIABLE_PRESENTATION_ENUMERATION &&
       in_array(['Value'=>'Q','Caption'=>'Leise / Nacht','IconActive'=>false,'IconValue'=>'','Color'=>-1], $fanOptions, true) &&
       $a->values['Fan'] === 'Q', 'native fan choices preserve actual Faikout codes');
+// Airflow variables must only be created when the device actually reports them.
+check(!isset($a->variables['SwingVertical']) &&
+      !isset($a->variables['SwingHorizontal']) &&
+      !isset($a->variables['Comfort']) &&
+      !isset($a->variables['IntelligentEye']), 'unsupported airflow controls not shown preemptively');
+$a->ReceiveData(packet('state/wohnzimmer', '{"swingv":true,"swingh":false,"comfort":true,"sensor":false}'));
+foreach ([
+    'SwingVertical' => true,
+    'SwingHorizontal' => false,
+    'Comfort' => true,
+    'IntelligentEye' => false,
+] as $ident => $expected) {
+    check(($a->values[$ident] ?? null) === $expected &&
+          $a->variables[$ident]['profile']['PRESENTATION'] === VARIABLE_PRESENTATION_SWITCH,
+          'native controllable switch and MQTT status for ' . $ident);
+}
+check(!isset($b->variables['Comfort']) && !isset($b->variables['IntelligentEye']),
+      'other devices keep their own optional capabilities');
 check(count($fanOptions) === 7 && count(array_filter($fanOptions, function ($option) {
     return !array_key_exists('IconActive', $option) ||
         !array_key_exists('IconValue', $option) || !array_key_exists('Color', $option);
@@ -234,6 +252,22 @@ $invalidRejected = false;
 try { $a->RequestAction('Fan', '9'); } catch (InvalidArgumentException $e) { $invalidRejected = true; }
 check($invalidRejected, 'invalid fan rejected');
 check(!$a->SetExternalTemperature(99), 'implausible temperature rejected');
+foreach ([
+    ['SwingVertical', true, 'swingv'],
+    ['SwingHorizontal', false, 'swingh'],
+    ['Comfort', true, 'comfort'],
+    ['IntelligentEye', false, 'sensor'],
+] as [$ident, $value, $key]) {
+    $a->RequestAction($ident, $value);
+    check(lastPacket($a)['Topic'] === 'command/wohnzimmer/control' &&
+          json_decode(lastPacket($a)['Payload'], true) === [$key => $value] &&
+          lastPacket($a)['Retain'] === false,
+          'airflow MQTT control payload for ' . $ident);
+}
+$rejected = false;
+try { $a->RequestAction('IntelligentEye', 1); }
+catch (InvalidArgumentException $e) { $rejected = true; }
+check($rejected, 'nonboolean air-flow commands rejected');
 $a->ReceiveData(packet('state/wohnzimmer', 'false'));
 check($a->values['ExternalReferenceReady'] === false &&
       $a->timers['ExternalTemperatureTimer'] === 0, 'MQTT disconnect disarms sensor forwarding');
