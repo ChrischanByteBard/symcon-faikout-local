@@ -1,8 +1,18 @@
 # Faikout Local – Symcon 9.0
 
-**Entwicklungsprototyp v0.2.0. Nicht für produktiven Heizbetrieb freigegeben.**
+**Entwicklungsprototyp v0.2.1. Nicht für produktiven Heizbetrieb freigegeben.**
 
 Eigenständige MQTT-Integration für die lokale Steuerung kompatibler Daikin-Faikout-Geräte über den integrierten Symcon-MQTT-Server. Kein Fork des archivierten Moduls *Faikin 4 Daikin*. Eigene Modul-IDs.
+
+## Ereignisgesteuerte Temperaturübertragung (v0.2.1)
+
+- Standardmäßig ab dieser Version eingeschaltet, solange die **externe Regelung selbst aktiv** und von Faikout bestätigt ist.
+- Das Modul abonniert die ausgewählte Temperaturvariable per Symcon `RegisterMessage(..., VM_UPDATE)` und verarbeitet Aktualisierungen über `MessageSink()`.
+- Eine zusätzliche Nachricht wird verschickt, wenn sich der Wert gegenüber der letzten **erfolgreich gesendeten** Temperatur um mindestens **0,2 K** geändert hat. Ein Mindestabstand von **30 s** schützt vor Nachrichtenspitzen. Beides ist in der Instanz einstellbar.
+- Weiterhin wird alle **120 s** die gültige Temperatur gesendet – auch ohne Änderung (Faikout-Timeout-Absicherung).
+- Die Übertragung bleibt gesperrt, wenn die externe Regelung deaktiviert ist oder die sicheren Faikout-Einstellungen nicht bestätigt sind.
+- Bei Wechsel der ausgewählten Sensorvariable wird die alte Symcon-Nachrichtenregistrierung entfernt und die neue registriert.
+- Diese Änderung betrifft nur die Weitergabe des Messwerts, **nicht** die interne Inverterregelung der Daikin.
 
 ## Funktionen
 - Separate Instanz je Daikin-Innengerät; exakte MQTT-Topic-Zuordnung nach Hostname.
