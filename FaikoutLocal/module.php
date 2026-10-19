@@ -86,7 +86,8 @@ class FaikoutLocal extends IPSModule
         'Temperature' => 'temperature-half',
         'Fan' => 'gauge-low',
         'Comfort' => 'wind',
-        'IntelligentEye' => 'Person-running-fast',
+        'IntelligentEye' => 'person-running-fast',
+        'ExternalReferenceEnabled' => 'circle-check',
     ];
 
     private const OUTDOOR_CAPTIONS = [
@@ -350,6 +351,17 @@ class FaikoutLocal extends IPSModule
         );
         $this->SortExistingVariables();
         $this->RefreshExistingControlPresentations();
+        // This local Symcon switch is not part of the Faikout status FIELDS.
+        // Reconfigure the already existing switch without replacing its value.
+        $this->MaintainVariable(
+            'ExternalReferenceEnabled',
+            'Externe Temperaturregelung freigegeben (Symcon)',
+            VARIABLETYPE_BOOLEAN,
+            $this->PresentationFor('ExternalReferenceEnabled', ''),
+            self::POSITIONS['ExternalReferenceEnabled'],
+            true
+        );
+        $this->EnableAction('ExternalReferenceEnabled');
         $hostname = $this->ReadPropertyString('Hostname');
         // Update message subscription whenever the sensor selection changes.
         $previousSensorId = $this->ReadAttributeInteger('SubscribedSensorVariableID');
