@@ -95,6 +95,17 @@ check($a->values['TempAdjust'] === true && $a->values['ControlTimeout'] === 600,
 check($a->values['ExternalReferenceReady'] === true, 'external reference confirmed');
 check($a->timers['ExternalTemperatureTimer'] === 120000, 'timer starts after acknowledgement');
 check($a->sent[2]['Topic'] === 'command/wohnzimmer/control' && $a->sent[2]['Payload'] === '{"env":21.3}', 'external sensor published after acknowledgement');
+$a->ReceiveData(packet('state/wohnzimmer', 'false'));
+check($a->values['ExternalReferenceReady'] === false &&
+      $a->timers['ExternalTemperatureTimer'] === 0, 'disconnect stops transmission immediately');
+$beforeReconnect = count($a->sent);
+$a->ReceiveData(packet('state/wohnzimmer', '{"online":true}'));
+check(count($a->sent) === $beforeReconnect + 2 &&
+      $a->values['ExternalReferenceReady'] === false, 'reconnect negotiates settings, without sending env');
+$a->ReceiveData(packet('setting/wohnzimmer', '{"autop":false,"autoptemp":0,"tempadjust":true}'));
+check($a->values['ExternalReferenceReady'] === true &&
+      $a->timers['ExternalTemperatureTimer'] === 120000, 'reconnect acknowledgement resumes timer');
+check(lastPacket($a)['Topic'] === 'command/wohnzimmer/control', 'reconnect emits env only after ack');
 
 $GLOBALS['sensor'][12345]['updated'] = time() - 3600;
 $before = count($a->sent);
